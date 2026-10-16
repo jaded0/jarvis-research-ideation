@@ -1,2 +1,10 @@
 # Reference papers are not redistributed; see references/README.md
 references/*.pdf
+
+# Local data and Python build artifacts
+*.db
+*.db-journal
+__pycache__/
+.venv/
+*.egg-info/
+.pytest_cache/

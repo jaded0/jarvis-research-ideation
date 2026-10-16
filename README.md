@@ -6,6 +6,27 @@ A research ideation assistant for researchers who are stuck. It reads what you h
 
 Class project.
 
+## Quick start
+
+```bash
+uv sync                          # install (Python ≥ 3.11, no runtime dependencies)
+export JARVIS_PROJECT=demo S2_API_KEY=... OPENALEX_API_KEY=...
+uv run jarvis project add demo --description "what the research is about"
+uv run jarvis papers search "fast weights memory" --source s2
+uv run jarvis ideas add --title "..." --summary "..." --paper s2:<id>=why
+uv run jarvis ideas export -o ideas.md
+uv run pytest
+```
+
+Run `pi` in this directory to use it as an agent. The project settings in `.pi/settings.json` make Claude Haiku 5.5 the default, and the skill in `.agents/skills/jarvis/` explains the CLI to the agent. Any harness that reads Agent Skills, or can just run bash, works too.
+
+## Layout
+
+- `src/jarvis/db.py`: SQLite schema (projects, ideas + FTS5, papers cache, idea↔paper links, notes, events).
+- `src/jarvis/ideas.py`: the idea pool, including `sample` for naive dedup (a random n, capped by characters).
+- `src/jarvis/papers.py`: Semantic Scholar / OpenAlex / arXiv search; results are cached in `papers`.
+- `src/jarvis/cli.py`: the `jarvis` command; `stats` reports value, variety and persistence from `events`.
+
 ## Contents
 
 - [`proposal.md`](proposal.md): original project proposal, based on the first (more elaborate) brainstorm.
