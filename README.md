@@ -17,9 +17,9 @@ Class project.
 
 ## MVP direction (from page 3)
 
-- Agent harness: [pi](https://github.com/badlogic/pi-mono) (leaning), with the tools built as a plain CLI + skill so they stay harness-agnostic.
+- Agent harness: [pi](https://github.com/badlogic/pi-mono). The tools are a plain CLI + skill, so the harness can be swapped.
 - A basic chatbot UI; the only special feature is an occasional multiple-choice prompt.
 - RAG tools: arXiv search, plus an ideas DB linking to papers, notes, and summaries.
 - Agents: a main chat agent, a dedup evaluator, and maybe research-specific subagents.
-- Models: cheap API models (e.g. Flash, Haiku).
+- Models: cheap API models. Claude Haiku is the default; OpenAI Luna is the alternate.
 - Design rules: manage context aggressively, and use naive solutions only. Write elegant ideas down for later.
