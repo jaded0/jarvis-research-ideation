@@ -88,3 +88,12 @@ def test_pi_command_uses_persona_and_only_our_skill():
     assert cmd[cmd.index("--append-system-prompt") + 1].endswith("persona.md")
     assert "--no-skills" in cmd and "edit" not in cmd[cmd.index("--tools") + 1]
     assert "--thinking" in cmd and "--" not in cmd
+
+
+def test_s2_throttle_spaces_calls(tmp_path, monkeypatch):
+    import time
+    monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path))
+    t0 = time.time()
+    papers._s2_throttle()
+    papers._s2_throttle()
+    assert time.time() - t0 >= papers.S2_MIN_INTERVAL

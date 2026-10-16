@@ -1,11 +1,13 @@
 """Literature search. Each source returns the same flat dict shape and results are cached.
 
 Sources:
-  s2        Semantic Scholar Graph API. Optional key: S2_API_KEY.
+  s2        Semantic Scholar Graph API. Key: S2_API_KEY (keyless works but shares a throttled pool).
+            Calls are spaced >= 1 s apart and back off exponentially on 429.
   openalex  OpenAlex works search. Key: OPENALEX_API_KEY (required by OpenAlex since Feb 2026).
   arxiv     arXiv export API. No key.
 """
 
+import fcntl
 import json
 import os
 import sqlite3
@@ -34,8 +36,27 @@ def _get(url: str, headers: dict | None = None, retries: int = 3) -> bytes:
             raise
 
 
+S2_MIN_INTERVAL = 1.05  # seconds; S2's introductory key limit is 1 request/s across all endpoints
+S2_FIELDS = "paperId,title,abstract,tldr,year,url,openAccessPdf"  # keep in sync with the key application
+
+
+def _s2_throttle() -> None:
+    """Space S2 calls >= 1 s apart across processes (each CLI call is its own process)."""
+    path = os.path.join(os.environ.get("XDG_CACHE_HOME", os.path.expanduser("~/.cache")), "jarvis", "s2_last")
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, "a+") as f:
+        fcntl.flock(f, fcntl.LOCK_EX)  # held until the file closes, so concurrent callers queue up
+        f.seek(0)
+        last = float(f.read() or 0)
+        time.sleep(max(0.0, last + S2_MIN_INTERVAL - time.time()))
+        f.seek(0)
+        f.truncate()
+        f.write(str(time.time()))
+
+
 def search_s2(query: str, limit: int) -> list[dict]:
-    fields = "paperId,title,year,authors,abstract,tldr,url,externalIds"
+    _s2_throttle()
+    fields = S2_FIELDS
     url = "https://api.semanticscholar.org/graph/v1/paper/search?" + urllib.parse.urlencode(
         {"query": query, "limit": limit, "fields": fields})
     key = os.environ.get("S2_API_KEY")
@@ -52,7 +73,7 @@ def parse_s2(p: dict) -> dict:
         "authors": ", ".join(a.get("name", "") for a in p.get("authors") or []),
         "abstract": p.get("abstract") or "",
         "tldr": (p.get("tldr") or {}).get("text") or "",
-        "url": p.get("url") or "",
+        "url": (p.get("openAccessPdf") or {}).get("url") or p.get("url") or "",
         "raw": p,
     }
 
