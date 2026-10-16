@@ -5,7 +5,7 @@ description: Research ideation tools. Use to search the literature (Semantic Sch
 
 # jarvis CLI
 
-All state lives in one SQLite file (`$JARVIS_DB`, default `./jarvis.db`). Every command prints short markdown; add `--json` only when you need exact fields. Set `JARVIS_PROJECT` or pass `-p NAME`.
+All state lives in one SQLite file (`$JARVIS_DB`, default `./jarvis.db`). Every command prints short markdown; add `--json` only when you need exact fields. Set `JARVIS_PROJECT` or pass `-p NAME`. If `jarvis` isn't on PATH, run it as `uv run -q jarvis` from the repo.
 
 ## Commands
 
@@ -33,7 +33,7 @@ jarvis stats
 ## Workflow
 
 1. **Ground before proposing.** Search the literature for the researcher's problem. Every idea must cite at least one paper you actually retrieved (`--paper`). Never invent paper ids.
-2. **Dedup before adding.** For each candidate idea:
+2. **Dedup before adding, one candidate at a time.** Take a fresh sample for every candidate, after adding the previous one, so new ideas are checked against each other too:
    - Run `jarvis ideas sample` and compare the candidate against the sampled ideas.
    - If it duplicates one, don't add it. Run `jarvis event dedup --data '{"verdict": "duplicate", "match": ID, "candidate": "TITLE"}'`.
    - Otherwise run `jarvis event dedup --data '{"verdict": "unique", "candidate": "TITLE"}'`, then `jarvis ideas add`.
