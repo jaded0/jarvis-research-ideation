@@ -34,6 +34,10 @@ The database (`jarvis.db`) and the project name default to the current directory
 - `src/jarvis/cli.py`: the `jarvis` command; `stats` reports value, variety and persistence from `events`; `chat` launches pi.
 - `src/jarvis/persona.md`: the J.A.R.V.I.S. persona (session flow, idea format, behaviour).
 
+## Data sources
+
+Literature data comes from [Semantic Scholar](https://www.semanticscholar.org) (Kinney et al., *The Semantic Scholar Open Data Platform*, 2023), [OpenAlex](https://openalex.org) and [arXiv](https://arxiv.org). Read [docs/semantic-scholar.md](docs/semantic-scholar.md) before changing anything that calls the S2 API.
+
 ## Contents
 
 - [`proposal.md`](proposal.md): original project proposal, based on the first (more elaborate) brainstorm.

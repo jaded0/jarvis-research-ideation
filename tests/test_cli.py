@@ -97,3 +97,18 @@ def test_s2_throttle_spaces_calls(tmp_path, monkeypatch):
     papers._s2_throttle()
     papers._s2_throttle()
     assert time.time() - t0 >= papers.S2_MIN_INTERVAL
+
+
+def test_repeated_search_uses_cache(conn, monkeypatch):
+    calls = []
+
+    def fake(query, limit):
+        calls.append(query)
+        return [papers.parse_s2({"paperId": "p1", "title": "T"})]
+
+    monkeypatch.setitem(papers.SOURCES, "s2", fake)
+    papers.search(conn, "Fast  Weights", "s2", 5)
+    hit = papers.search(conn, "fast weights", "s2", 5)
+    assert len(calls) == 1 and hit[0]["id"] == "s2:p1"
+    papers.search(conn, "fast weights", "s2", 5, refresh=True)
+    assert len(calls) == 2

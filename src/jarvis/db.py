@@ -53,6 +53,16 @@ CREATE TABLE IF NOT EXISTS papers (
     fetched_at TEXT NOT NULL
 );
 
+-- Recent searches, so repeating a query doesn't hit the API again (see papers.SEARCH_TTL_DAYS).
+CREATE TABLE IF NOT EXISTS searches (
+    query     TEXT NOT NULL,
+    source    TEXT NOT NULL,
+    lim       INTEGER NOT NULL,
+    paper_ids TEXT NOT NULL,
+    ts        TEXT NOT NULL,
+    PRIMARY KEY (query, source, lim)
+);
+
 CREATE TABLE IF NOT EXISTS idea_papers (
     idea_id  INTEGER NOT NULL REFERENCES ideas(id),
     paper_id TEXT NOT NULL REFERENCES papers(id),

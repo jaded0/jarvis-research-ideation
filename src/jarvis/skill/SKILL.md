@@ -40,4 +40,5 @@ jarvis stats
    - Otherwise run `jarvis event dedup --data '{"verdict": "unique", "candidate": "TITLE"}'`, then `jarvis ideas add`.
 3. **Present a few ideas at a time** (about five). Let the researcher approve, reject or ask you to elaborate on each, and record the answer with `jarvis ideas status`.
 4. **Log every time you ask the user something:** `jarvis event ask_user --data '{"reason": "..."}'`. This is how persistence is measured.
-5. **Keep context small.** Prefer TLDRs and list views. Only `show` a paper or idea when you need its details.
+5. **Go easy on the APIs.** Our Semantic Scholar key allows 1 request/s and can be revoked. Before searching, check whether a cached paper already covers it (`jarvis papers show`). Use a few well-chosen queries (about 3 per idea), not many variations. Never loop searches in bash, and never retry a failed search more than once. Identical searches are served from cache automatically.
+6. **Keep context small.** Prefer TLDRs and list views. Only `show` a paper or idea when you need its details.

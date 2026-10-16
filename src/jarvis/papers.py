@@ -139,10 +139,23 @@ def parse_arxiv(xml: bytes) -> list[dict]:
 SOURCES = {"s2": search_s2, "openalex": search_openalex, "arxiv": search_arxiv}
 
 
-def search(conn: sqlite3.Connection, query: str, source: str = "s2", limit: int = 10) -> list[dict]:
+SEARCH_TTL_DAYS = 7
+
+
+def search(conn: sqlite3.Connection, query: str, source: str = "s2", limit: int = 10,
+           refresh: bool = False) -> list[dict]:
+    """Search a source, reusing an identical search from the last SEARCH_TTL_DAYS instead of re-asking the API."""
+    key = (" ".join(query.lower().split()), source, limit)
+    row = conn.execute(
+        "SELECT paper_ids FROM searches WHERE query = ? AND source = ? AND lim = ? "
+        "AND ts > datetime('now', ?)", (*key, f"-{SEARCH_TTL_DAYS} days")).fetchone()
+    if row and not refresh:
+        return [get(conn, pid) for pid in json.loads(row["paper_ids"])]
     results = SOURCES[source](query, limit)
     for p in results:
         cache(conn, p)
+    conn.execute("INSERT OR REPLACE INTO searches (query, source, lim, paper_ids, ts) "
+                 "VALUES (?, ?, ?, ?, datetime('now'))", (*key, json.dumps([p["id"] for p in results])))
     conn.commit()
     return results
 

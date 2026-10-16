@@ -127,7 +127,7 @@ def cmd_notes_list(conn, args):
 
 def cmd_papers_search(conn, args):
     emit(args, [{k: v for k, v in p.items() if k != "raw"}
-                for p in papers.search(conn, args.query, args.source, args.limit)], paper_lines)
+                for p in papers.search(conn, args.query, args.source, args.limit, args.refresh)], paper_lines)
 
 
 def cmd_papers_show(conn, args):
@@ -258,6 +258,7 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("query")
     p.add_argument("--source", choices=list(papers.SOURCES), default="s2")
     p.add_argument("--limit", type=int, default=10)
+    p.add_argument("--refresh", action="store_true", help="ignore a cached identical search")
     p = sub(g, "show", cmd_papers_show)
     p.add_argument("id")
 
