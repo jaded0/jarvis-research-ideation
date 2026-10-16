@@ -80,3 +80,11 @@ def test_cli_roundtrip(tmp_path, capsys):
     stats = json.loads(run(tmp_path, capsys, "stats", "-p", "demo", "--json"))
     assert stats["duplicate_rate"] == 1.0 and stats["user_prompts"] == 1
     assert "[1] First" in run(tmp_path, capsys, "ideas", "list", "-p", "demo")
+
+
+def test_pi_command_uses_persona_and_only_our_skill():
+    args = cli.build_parser().parse_args(["chat", "-p", "x", "--", "--thinking", "low"])
+    cmd = cli.pi_command(args)
+    assert cmd[cmd.index("--append-system-prompt") + 1].endswith("persona.md")
+    assert "--no-skills" in cmd and "edit" not in cmd[cmd.index("--tools") + 1]
+    assert "--thinking" in cmd and "--" not in cmd

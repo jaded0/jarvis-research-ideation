@@ -18,14 +18,21 @@ uv run jarvis ideas export -o ideas.md
 uv run pytest
 ```
 
-Run `pi` in this directory to use it as an agent. The project settings in `.pi/settings.json` make Claude Haiku 5.5 the default, and the skill in `.agents/skills/jarvis/` explains the CLI to the agent. Any harness that reads Agent Skills, or can just run bash, works too.
+To talk to J.A.R.V.I.S., `cd` into *your research project* and run `jarvis chat` (install once with `uv tool install -e ~/jarvis`, or use `uv run --project ~/jarvis jarvis chat`). This launches [pi](https://github.com/badlogic/pi-mono) with:
+- the persona in `src/jarvis/persona.md`, appended to pi's system prompt
+- only the jarvis skill (`src/jarvis/skill/`)
+- read-only tools plus bash, so it can't edit your files
+- Haiku 5.5 through OpenRouter, with Ctrl+P switching to Luna. Override with `JARVIS_MODELS=provider/model,...`, and pass extra pi flags after `--`.
+
+The database (`jarvis.db`) and the project name default to the current directory. Working on this repo with pi or another coding agent is unaffected; the skill is also linked at `.agents/skills/jarvis` for testing.
 
 ## Layout
 
 - `src/jarvis/db.py`: SQLite schema (projects, ideas + FTS5, papers cache, idea↔paper links, notes, events).
 - `src/jarvis/ideas.py`: the idea pool, including `sample` for naive dedup (a random n, capped by characters).
 - `src/jarvis/papers.py`: Semantic Scholar / OpenAlex / arXiv search; results are cached in `papers`.
-- `src/jarvis/cli.py`: the `jarvis` command; `stats` reports value, variety and persistence from `events`.
+- `src/jarvis/cli.py`: the `jarvis` command; `stats` reports value, variety and persistence from `events`; `chat` launches pi.
+- `src/jarvis/persona.md`: the J.A.R.V.I.S. persona (session flow, idea format, behaviour).
 
 ## Contents
 

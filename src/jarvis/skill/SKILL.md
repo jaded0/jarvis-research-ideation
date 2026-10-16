@@ -26,6 +26,7 @@ jarvis ideas sample [-n 40]                     # random sample of the pool, for
 jarvis ideas export [-o ideas.md]
 
 jarvis notes add "..." [--idea ID]
+jarvis notes list
 jarvis event KIND --data '{"...": ...}'        # evaluation log
 jarvis stats
 ```

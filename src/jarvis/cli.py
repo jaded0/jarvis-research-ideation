@@ -3,11 +3,15 @@
 import argparse
 import json
 import os
+import shutil
 import sqlite3
 import sys
 import urllib.error
 
 from . import db, ideas, papers
+
+HERE = os.path.dirname(os.path.abspath(__file__))
+DEFAULT_MODELS = "openrouter/anthropic/claude-haiku-5.5,openrouter/openai/gpt-5.6-luna"
 
 
 def emit(args, data, md) -> None:
@@ -112,6 +116,15 @@ def cmd_notes_add(conn, args):
     emit(args, {"id": cur.lastrowid}, f"Added note {cur.lastrowid}.")
 
 
+def cmd_notes_list(conn, args):
+    rows = [dict(r) for r in conn.execute(
+        "SELECT id, idea_id, body, created_at FROM notes WHERE project_id = ? ORDER BY id",
+        (db.project_id(conn, args.project),))]
+    emit(args, rows, lambda rs: "\n".join(
+        f"- [{r['id']}]" + (f" (idea {r['idea_id']})" if r["idea_id"] else "") + f" {r['body']}" for r in rs)
+         or "(no notes)")
+
+
 def cmd_papers_search(conn, args):
     emit(args, [{k: v for k, v in p.items() if k != "raw"}
                 for p in papers.search(conn, args.query, args.source, args.limit)], paper_lines)
@@ -150,6 +163,34 @@ def cmd_stats(conn, args):
         "events": events,
     }
     emit(args, stats, lambda s: "\n".join(f"- {k}: {v}" for k, v in s.items()))
+
+
+def pi_command(args) -> list[str]:
+    models = os.environ.get("JARVIS_MODELS", DEFAULT_MODELS)
+    return [
+        "pi",
+        "--model", models.split(",")[0],
+        "--models", models,  # Ctrl+P cycles through these
+        "--append-system-prompt", os.path.join(HERE, "persona.md"),
+        "--no-skills", "--skill", os.path.join(HERE, "skill"),  # only our skill, to keep context small
+        "--tools", "read,bash,grep,find,ls",  # no edit/write: JARVIS suggests, it doesn't change files
+        *[a for a in args.pi_args if a != "--"],
+        "Begin the session.",
+    ]
+
+
+def cmd_chat(conn, args):
+    """Launch pi as J.A.R.V.I.S. in the current directory (the researcher's project)."""
+    if conn.execute("SELECT 1 FROM projects WHERE name = ?", (args.project,)).fetchone() is None:
+        conn.execute("INSERT INTO projects (name, created_at) VALUES (?, ?)", (args.project, db.now()))
+        conn.commit()
+    conn.close()
+    if shutil.which("pi") is None:
+        raise LookupError("pi is not installed: npm i -g @earendil-works/pi-coding-agent")
+    env = dict(os.environ, JARVIS_PROJECT=args.project, JARVIS_DB=os.path.abspath(args.db or db.default_path()))
+    # Put this interpreter's bin dir first so the agent can call `jarvis` directly.
+    env["PATH"] = os.path.dirname(sys.executable) + os.pathsep + env.get("PATH", "")
+    os.execvpe("pi", pi_command(args), env)
 
 
 # --- parser -------------------------------------------------------------------
@@ -210,6 +251,7 @@ def build_parser() -> argparse.ArgumentParser:
     p = sub(g, "add", cmd_notes_add, (common, proj))
     p.add_argument("body")
     p.add_argument("--idea", type=int)
+    sub(g, "list", cmd_notes_list, (common, proj))
 
     g = groups.add_parser("papers", help="literature search").add_subparsers(required=True)
     p = sub(g, "search", cmd_papers_search)
@@ -223,6 +265,12 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("kind")
     p.add_argument("-p", "--project", default=os.environ.get("JARVIS_PROJECT"))
     p.add_argument("--data", default="{}", help="JSON payload")
+
+    p = sub(groups, "chat", cmd_chat, help="talk to J.A.R.V.I.S. (launches pi) in the current directory")
+    p.add_argument("-p", "--project",
+                   default=os.environ.get("JARVIS_PROJECT") or os.path.basename(os.getcwd()),
+                   help="project name (default: $JARVIS_PROJECT, else the current directory's name)")
+    p.add_argument("pi_args", nargs=argparse.REMAINDER, help="extra pi flags, after --")
 
     sub(groups, "stats", cmd_stats, (common, proj), help="evaluation metrics for a project")
     return parser
