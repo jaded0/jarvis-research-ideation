@@ -1,19 +1,38 @@
-"""Ideas: add, edit, list, sample for dedup, search, export."""
+"""Ideas: storage, semantic neighbours, keyword fallback, export."""
 
-import random
 import sqlite3
+import sys
 
+from . import embeddings
 from .db import log_event, now
 
 STATUSES = ("proposed", "approved", "rejected", "elaborating")
+DEDUP_THRESHOLD = 0.5
+
+
+def vector(text: str):
+    """Unavailable embeddings must be visible, never a silent pass."""
+    try:
+        return embeddings.embed([text])[0]
+    except Exception as e:
+        print(f"Embeddings unavailable ({e}); using keyword neighbours.", file=sys.stderr)
+        return None
+
+
+def text(title: str, summary: str) -> str:
+    return title + "\n" + summary
 
 
 def add(conn: sqlite3.Connection, project_id: int, title: str, summary: str = "", body: str = "",
-        papers: list[tuple[str, str]] = ()) -> int:
+        papers: list[tuple[str, str]] = (), embedding=..., embed_model: str | None = None) -> int:
+    if embedding is ...:
+        embedding = vector(text(title, summary))
     ts = now()
     cur = conn.execute(
-        "INSERT INTO ideas (project_id, title, summary, body, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)",
-        (project_id, title, summary, body, ts, ts),
+        "INSERT INTO ideas (project_id, title, summary, body, created_at, updated_at, embedding, embed_model) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+        (project_id, title, summary, body, ts, ts, embeddings.pack(embedding) if embedding is not None else None,
+         (embed_model or embeddings.model()) if embedding is not None else None),
     )
     idea_id = cur.lastrowid
     for paper_id, why in papers:
@@ -67,7 +86,7 @@ def set_status(conn: sqlite3.Connection, idea_id: int, status: str) -> None:
 def edit(conn: sqlite3.Connection, idea_id: int, title: str | None = None, summary: str | None = None,
          body: str | None = None, append: str | None = None) -> None:
     """Change an idea's fields. `body` replaces the description; `append` adds a paragraph to it (elaborations)."""
-    row = conn.execute("SELECT project_id, body FROM ideas WHERE id = ?", (idea_id,)).fetchone()
+    row = conn.execute("SELECT project_id, title, summary, body FROM ideas WHERE id = ?", (idea_id,)).fetchone()
     if row is None:
         raise LookupError(f"no idea with id {idea_id}")
     fields = {"title": title, "summary": summary, "body": body}
@@ -77,31 +96,56 @@ def edit(conn: sqlite3.Connection, idea_id: int, title: str | None = None, summa
         fields["body"] = f"{base}\n\n{append}" if base else append
     if not fields:
         raise ValueError("nothing to change: pass --title, --summary, --body or --append")
+    changed = sorted(fields)
+    if any(k in fields and fields[k] != row[k] for k in ("title", "summary")):
+        v = vector(text(fields.get("title", row["title"]), fields.get("summary", row["summary"])))
+        fields["embedding"] = embeddings.pack(v) if v is not None else None
+        fields["embed_model"] = embeddings.model() if v is not None else None
     sets = ", ".join(f"{k} = ?" for k in fields)
     conn.execute(f"UPDATE ideas SET {sets}, updated_at = ? WHERE id = ?", (*fields.values(), now(), idea_id))
     conn.commit()
-    log_event(conn, "idea_edited", row["project_id"], idea_id=idea_id, fields=sorted(fields))
+    log_event(conn, "idea_edited", row["project_id"], idea_id=idea_id, fields=changed)
 
 
-def sample(conn: sqlite3.Connection, project_id: int, n: int = 40, max_chars: int = 12000,
-           seed: int | None = None) -> list[dict]:
-    """Random sample of the idea pool for dedup checks.
+def neighbours(conn: sqlite3.Connection, project_id: int, v, limit: int | None = 5) -> list[dict]:
+    """Scan the whole project, including rejected ideas, using only the current model."""
+    rows = []
+    for r in conn.execute("SELECT id, title, summary, status, embedding FROM ideas "
+                          "WHERE project_id = ? AND embedding IS NOT NULL AND embed_model = ?",
+                          (project_id, embeddings.model())):
+        idea = {k: r[k] for k in ("id", "title", "summary", "status")}
+        idea["score"] = embeddings.cosine(v, embeddings.unpack(r["embedding"]))
+        rows.append(idea)
+    rows.sort(key=lambda r: (-r["score"], r["id"]))
+    return rows[:limit] if limit is not None else rows
 
-    Naive on purpose: cost stays bounded as the pool grows, and a duplicate of a single
-    existing idea is caught with probability ~n/pool. Stops early at max_chars.
-    """
-    pool = [dict(r) for r in conn.execute(
-        "SELECT id, title, summary FROM ideas WHERE project_id = ?", (project_id,))]
-    picked = random.Random(seed).sample(pool, min(n, len(pool)))
-    out, used = [], 0
-    for idea in picked:
-        size = len(idea["title"]) + len(idea["summary"])
-        if out and used + size > max_chars:
-            break
-        out.append(idea)
-        used += size
-    log_event(conn, "dedup_sample", project_id, pool=len(pool), n=len(out))
-    return out
+
+def candidates(conn: sqlite3.Connection, project_id: int, query: str, v) -> list[dict]:
+    """Semantic neighbours plus keyword matches for ideas not yet embedded."""
+    rows = neighbours(conn, project_id, v, limit=None) if v is not None else []
+    scored = {r["id"] for r in rows}
+    for r in search(conn, project_id, query, limit=-1):
+        if r["id"] not in scored:
+            rows.append({**r, "score": None})
+    return rows
+
+
+def flagged(rows: list[dict], threshold: float = DEDUP_THRESHOLD) -> list[dict]:
+    return [r for r in rows if r["score"] is None or r["score"] >= threshold]
+
+
+def backfill(conn: sqlite3.Connection, project_id: int) -> int:
+    rows = conn.execute("SELECT id, title, summary FROM ideas WHERE project_id = ? "
+                        "AND (embedding IS NULL OR embed_model IS NULL OR embed_model != ?)",
+                        (project_id, embeddings.model())).fetchall()
+    for start in range(0, len(rows), 100):
+        batch = rows[start:start + 100]
+        vectors = embeddings.embed([text(r["title"], r["summary"]) for r in batch])
+        for r, v in zip(batch, vectors):
+            conn.execute("UPDATE ideas SET embedding = ?, embed_model = ? WHERE id = ?",
+                         (embeddings.pack(v), embeddings.model(), r["id"]))
+    conn.commit()
+    return len(rows)
 
 
 def fts_query(query: str) -> str:

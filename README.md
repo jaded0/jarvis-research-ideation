@@ -30,7 +30,11 @@ The database defaults to `./jarvis.db` (override with `$JARVIS_DB` or `--db`). O
 
 ## How it works
 
-You tell Jarvis what you're working on and where you're stuck. It remembers earlier ideas and notes, looks up what scientists have written, and suggests a few new things to try. It checks a sample of earlier ideas to avoid repeats; it can still miss duplicates. You pick which ideas you like.
+You tell Jarvis what you're working on and where you're stuck. It remembers earlier ideas and notes, looks up what scientists have written, and suggests a few new things to try. Before accepting an idea, the CLI compares its title + summary against the project's earlier ideas, including rejected ones. Similarity flags require review; they are not proof of duplication. You pick which accepted ideas you like.
+
+`ideas add` embeds title + summary through OpenRouter using `openai/text-embedding-3-small` (`OPENROUTER_API_KEY`; override the model with `JARVIS_EMBED_MODEL`). Cosine similarity ≥0.5 gates insertion (`--threshold` overrides it). Read every flagged neighbour, then drop a repeat or retry with `--distinct-from 1,2` naming **all** flagged IDs judged different, including rejected ideas. If embeddings are unavailable, keyword matches gate insertion instead; older rows without current-model embeddings are keyword-gated too.
+
+Use `jarvis ideas check --title "..." --summary "..."` to list neighbours without inserting, `jarvis ideas embed` to backfill the selected project's missing or old-model embeddings, and `jarvis ideas search "QUERY"` for semantic retrieval with FTS keyword fallback. The CLI logs `dedup` verdicts (`flagged` / `unique`) automatically; manual `event dedup` is forbidden. In `stats`, `duplicate_rate` is flagged / (flagged + unique) CLI add attempts, counting retries—not ground-truth duplicates.
 
 ```mermaid
 flowchart LR
@@ -64,8 +68,9 @@ On every push to `main`, GitHub Actions (`.github/workflows/ci.yml`) runs the te
 
 ## Layout
 
-- `src/jarvis/db.py`: SQLite schema (projects, ideas + FTS5, papers cache, idea↔paper links, notes, events). The schema comment lists every event kind and which stat reads it.
-- `src/jarvis/ideas.py`: the idea pool, including `sample` for naive dedup (a random n, capped by characters).
+- `src/jarvis/db.py`: SQLite schema and migration of older idea tables to float32 embedding blobs + model names (projects, ideas + FTS5, papers cache, idea↔paper links, notes, events). The schema comment lists every event kind and which stat reads it.
+- `src/jarvis/ideas.py`: the idea pool, current-model cosine neighbours, keyword fallback, dedup flags and embedding backfill.
+- `src/jarvis/embeddings.py`: stdlib OpenRouter POST, retries, float32 packing and cosine similarity.
 - `src/jarvis/papers.py`: Semantic Scholar / OpenAlex / arXiv search; results are cached in `papers`.
 - `src/jarvis/cli.py`: the `jarvis` command; `stats` reports value, variety and persistence from `events`; `chat` launches pi.
 - `src/jarvis/ask.ts`: the pi extension behind the `ask` tool (card-by-card choices; mouse works in pi's fullscreen mode).

@@ -3,6 +3,7 @@
 import argparse
 import http.client
 import json
+import math
 import os
 import shutil
 import sqlite3
@@ -60,9 +61,48 @@ def cmd_project_list(conn, args):
 
 
 def cmd_ideas_add(conn, args):
+    pid = db.project_id(conn, args.project)
+    if not math.isfinite(args.threshold) or not -1 <= args.threshold <= 1:
+        raise ValueError("--threshold must be between -1 and 1")
+    distinct = sorted({int(x) for x in args.distinct_from.split(",") if x.strip()})
+    query = ideas.text(args.title, args.summary)
+    v = ideas.vector(query)
+    rows = ideas.candidates(conn, pid, query, v)
+    matches = ideas.flagged(rows, args.threshold)
+    missing = {r["id"] for r in matches} - set(distinct)
+    payload = dict(candidate=args.title, matches=[r["id"] for r in matches],
+                   nearest_id=rows[0]["id"] if rows else None,
+                   top_score=rows[0]["score"] if rows else None, distinct_from=distinct,
+                   source="embedding" if v is not None else "keyword")
+    if missing:
+        db.log_event(conn, "dedup", pid, verdict="flagged", **payload)
+        message = "Not added. Read the neighbours, then drop the idea or re-run with --distinct-from ID[,ID...] "
+        message += "naming every flagged neighbour judged different. Missing: " + ",".join(map(str, sorted(missing)))
+        emit(args, {"error": message, "neighbours": matches}, message + "\n" + neighbour_lines(matches))
+        return 1
     links = [tuple(x.strip() for x in p.split("=", 1)) if "=" in p else (p.strip(), "") for p in args.paper]
-    idea_id = ideas.add(conn, db.project_id(conn, args.project), args.title, args.summary, args.body, links)
+    idea_id = ideas.add(conn, pid, args.title, args.summary, args.body, links, embedding=v)
+    db.log_event(conn, "dedup", pid, verdict="unique", idea_id=idea_id, **payload)
     emit(args, {"id": idea_id}, f"Added idea {idea_id}.")
+
+
+def neighbour_lines(rows) -> str:
+    return "\n".join(f"- [{r['id']}] ({r['status']}, "
+                     + (f"score {r['score']:.3f}" if r["score"] is not None else "keyword match")
+                     + f") {r['title']}: {r['summary']}" for r in rows) or "(no neighbours)"
+
+
+def cmd_ideas_check(conn, args):
+    query = ideas.text(args.title, args.summary)
+    rows = ideas.candidates(conn, db.project_id(conn, args.project), query, ideas.vector(query))
+    matches = ideas.flagged(rows)
+    shown = rows[:5] + [r for r in matches if r not in rows[:5]]
+    emit(args, shown, neighbour_lines)
+
+
+def cmd_ideas_embed(conn, args):
+    n = ideas.backfill(conn, db.project_id(conn, args.project))
+    emit(args, {"embedded": n}, f"Embedded {n} ideas.")
 
 
 def cmd_ideas_list(conn, args):
@@ -91,13 +131,13 @@ def cmd_ideas_status(conn, args):
     emit(args, {"id": args.id, "status": args.status}, f"Idea {args.id} is now {args.status}.")
 
 
-def cmd_ideas_sample(conn, args):
-    rows = ideas.sample(conn, db.project_id(conn, args.project), args.n, args.max_chars, args.seed)
-    emit(args, rows, idea_lines)
-
-
 def cmd_ideas_search(conn, args):
-    emit(args, ideas.search(conn, db.project_id(conn, args.project), args.query, args.limit), idea_lines)
+    pid = db.project_id(conn, args.project)
+    v = ideas.vector(args.query)
+    rows = ideas.neighbours(conn, pid, v, args.limit) if v is not None else []
+    if not rows:
+        rows = ideas.search(conn, pid, args.query, args.limit)
+    emit(args, rows, idea_lines)
 
 
 def cmd_ideas_link(conn, args):
@@ -148,6 +188,8 @@ def cmd_papers_show(conn, args):
 
 
 def cmd_event(conn, args):
+    if args.kind == "dedup":
+        raise ValueError("dedup events are logged by `jarvis ideas add`, not `jarvis event`")
     pid = db.project_id(conn, args.project) if args.project else None
     try:
         data = json.loads(args.data)
@@ -163,8 +205,8 @@ def cmd_stats(conn, args):
     """Evaluation metrics, from the ideas table and the events log (event kinds are listed in db.py).
 
     value        approved_rate: approved / all ideas, proposed ones included. Higher is better.
-    variety      duplicate_rate: share of the agent's own dedup verdicts that said "duplicate". Lower is
-                 better. It measures what the agent reports, not ground truth.
+    variety      duplicate_rate: share of CLI add attempts refused (flagged / (flagged + unique)).
+                 Retries count as attempts. Lower is better; similarity flags are not ground truth.
     persistence  user_prompts: how many times the agent logged asking the user. Lower is better.
     """
     pid = db.project_id(conn, args.project)
@@ -172,15 +214,17 @@ def cmd_stats(conn, args):
         "SELECT status, COUNT(*) FROM ideas WHERE project_id = ? GROUP BY status", (pid,)).fetchall())
     events = dict(conn.execute(
         "SELECT kind, COUNT(*) FROM events WHERE project_id = ? GROUP BY kind", (pid,)).fetchall())
-    verdicts = [json.loads(r[0]).get("verdict") for r in conn.execute(
-        "SELECT payload FROM events WHERE project_id = ? AND kind = 'dedup'", (pid,))]
+    verdicts = [p["verdict"] for r in conn.execute(
+        "SELECT payload FROM events WHERE project_id = ? AND kind = 'dedup'", (pid,))
+        if (p := json.loads(r[0])).get("source") in ("embedding", "keyword")
+        and p.get("verdict") in ("flagged", "unique")]
     total = sum(counts.values())
     stats = {
         "ideas": counts,
         # value: share of ideas the user approved
         "approved_rate": counts.get("approved", 0) / total if total else None,
         # variety: share of dedup checks that flagged a duplicate
-        "duplicate_rate": verdicts.count("duplicate") / len(verdicts) if verdicts else None,
+        "duplicate_rate": verdicts.count("flagged") / len(verdicts) if verdicts else None,
         # persistence: how often the agent had to prompt the user
         "user_prompts": events.get("ask_user", 0),
         "events": events,
@@ -253,6 +297,8 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--title", required=True)
     p.add_argument("--summary", default="", help="one or two sentences; this is what dedup sees")
     p.add_argument("--body", default="", help="longer description")
+    p.add_argument("--distinct-from", default="", metavar="ID[,ID...]", help="neighbours judged different")
+    p.add_argument("--threshold", type=float, default=ideas.DEDUP_THRESHOLD, help="cosine gate (default: 0.5)")
     p.add_argument("--paper", action="append", default=[], metavar="ID[=WHY]",
                    help="cached paper id that supports the idea (repeatable)")
     p = sub(g, "list", cmd_ideas_list, (common, proj))
@@ -268,11 +314,11 @@ def build_parser() -> argparse.ArgumentParser:
     p = sub(g, "status", cmd_ideas_status)
     p.add_argument("id", type=int)
     p.add_argument("status", choices=ideas.STATUSES)
-    p = sub(g, "sample", cmd_ideas_sample, (common, proj), help="random sample of the pool for dedup")
-    p.add_argument("-n", type=int, default=40)
-    p.add_argument("--max-chars", type=int, default=12000)
-    p.add_argument("--seed", type=int)
-    p = sub(g, "search", cmd_ideas_search, (common, proj), help="keyword search (SQLite FTS5)")
+    p = sub(g, "check", cmd_ideas_check, (common, proj), help="screen without adding")
+    p.add_argument("--title", required=True)
+    p.add_argument("--summary", default="")
+    sub(g, "embed", cmd_ideas_embed, (common, proj), help="backfill embeddings for this project")
+    p = sub(g, "search", cmd_ideas_search, (common, proj), help="semantic search, keyword fallback")
     p.add_argument("query")
     p.add_argument("--limit", type=int, default=10)
     p = sub(g, "link", cmd_ideas_link)
@@ -298,7 +344,7 @@ def build_parser() -> argparse.ArgumentParser:
     p = sub(g, "show", cmd_papers_show)
     p.add_argument("id")
 
-    p = sub(groups, "event", cmd_event, help="log an evaluation event (e.g. dedup, ask_user)")
+    p = sub(groups, "event", cmd_event, help="log an evaluation event (e.g. ask_user)")
     p.add_argument("kind")
     p.add_argument("-p", "--project", default=os.environ.get("JARVIS_PROJECT"))
     p.add_argument("--data", default="{}", help="JSON payload")
@@ -332,7 +378,7 @@ def main(argv=None) -> int:
         print(f"error: can't open database {args.db or db.default_path()!r}: {e}", file=sys.stderr)
         return 1
     try:
-        args.fn(conn, args)
+        return args.fn(conn, args) or 0
     # Expected failures print one line. OSError covers network errors and timeouts (URLError is one) and bad paths.
     except (LookupError, ValueError, sqlite3.IntegrityError, sqlite3.OperationalError, OSError,
             http.client.HTTPException) as e:
@@ -340,7 +386,6 @@ def main(argv=None) -> int:
         return 1
     finally:
         conn.close()
-    return 0
 
 
 if __name__ == "__main__":

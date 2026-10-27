@@ -3,7 +3,23 @@ import os
 
 import pytest
 
-from jarvis import cli, db, ideas, papers
+from jarvis import cli, db, embeddings, ideas, papers
+
+REAL_EMBED = embeddings.embed
+
+@pytest.fixture(autouse=True)
+def no_embedding_network(monkeypatch):
+    def unavailable(texts):
+        raise ValueError("offline test")
+    monkeypatch.setattr(embeddings, "embed", unavailable)
+
+
+@pytest.fixture
+def fake_embeddings(monkeypatch):
+    def fake(texts):
+        return [[float(word in text.lower()) for word in ("memory", "batch", "optimizer")] for text in texts]
+    monkeypatch.setattr(embeddings, "embed", fake)
+    return fake
 
 
 @pytest.fixture
@@ -18,22 +34,6 @@ def conn(tmp_path):
 def run(tmp_path, capsys, *argv):
     assert cli.main([*argv, "--db", str(tmp_path / "t.db")]) == 0
     return capsys.readouterr().out
-
-
-def test_sample_is_bounded_and_logged(conn):
-    for i in range(100):
-        ideas.add(conn, 1, f"idea {i}", "x" * 100)
-    assert len(ideas.sample(conn, 1, n=40, seed=0)) == 40
-    assert len(ideas.sample(conn, 1, n=40, max_chars=1000, seed=0)) < 40
-    payload = json.loads(conn.execute(
-        "SELECT payload FROM events WHERE kind = 'dedup_sample' ORDER BY id DESC").fetchone()[0])
-    assert payload["pool"] == 100
-
-
-def test_sample_small_pool_returns_everything(conn):
-    for i in range(3):
-        ideas.add(conn, 1, f"idea {i}")
-    assert len(ideas.sample(conn, 1, n=40)) == 3
 
 
 def test_search_and_status_update_fts(conn):
@@ -76,10 +76,11 @@ def test_parse_arxiv():
 def test_cli_roundtrip(tmp_path, capsys):
     run(tmp_path, capsys, "project", "add", "demo", "--description", "test")
     assert "Added idea 1" in run(tmp_path, capsys, "ideas", "add", "-p", "demo", "--title", "First", "--summary", "s")
-    run(tmp_path, capsys, "event", "dedup", "-p", "demo", "--data", '{"verdict": "duplicate"}')
+    assert cli.main(["ideas", "add", "-p", "demo", "--title", "First", "--db", str(tmp_path / "t.db")]) == 1
+    capsys.readouterr()
     run(tmp_path, capsys, "event", "ask_user", "-p", "demo")
     stats = json.loads(run(tmp_path, capsys, "stats", "-p", "demo", "--json"))
-    assert stats["duplicate_rate"] == 1.0 and stats["user_prompts"] == 1
+    assert stats["duplicate_rate"] == 0.5 and stats["user_prompts"] == 1
     assert "[1] First" in run(tmp_path, capsys, "ideas", "list", "-p", "demo")
 
 
@@ -200,7 +201,7 @@ def test_s2_throttle_runs_before_every_retry(monkeypatch):
 @pytest.mark.parametrize("data", ["[1, 2]", '{"kind": "x", "project_id": 5}', "not json"])
 def test_event_payloads(tmp_path, capsys, data):
     run(tmp_path, capsys, "project", "add", "demo")
-    code = cli.main(["event", "dedup", "-p", "demo", "--data", data, "--db", str(tmp_path / "t.db")])
+    code = cli.main(["event", "ask_user", "-p", "demo", "--data", data, "--db", str(tmp_path / "t.db")])
     assert code == (0 if data.startswith("{") else 1)  # bad payloads are a one-line error, not a traceback
 
 
@@ -237,3 +238,194 @@ def test_every_skill_command_parses(monkeypatch):
         line = re.sub(r"(\w+)\|[\w|]+", r"\1", line)                             # a|b|c -> a
         line = line.replace("ID", "1").replace("NAME", "x").replace("KIND", "dedup")
         parser.parse_args(shlex.split(line)[1:])  # SystemExit fails the test
+
+
+def test_migrate_old_database(tmp_path):
+    import sqlite3
+    path = str(tmp_path / "old.db")
+    c = sqlite3.connect(path)
+    c.executescript(db.SCHEMA.replace("    embedding  BLOB,\n", "").replace("    embed_model TEXT,\n", ""))
+    c.execute("INSERT INTO projects (name, created_at) VALUES ('old', ?)", (db.now(),))
+    c.execute("INSERT INTO ideas (project_id, title, created_at, updated_at) VALUES (1, 'kept', ?, ?)",
+              (db.now(), db.now()))
+    c.commit()
+    c.close()
+    for _ in range(2):
+        c = db.connect(path)
+        row = c.execute("SELECT title, embedding, embed_model FROM ideas").fetchone()
+        assert tuple(row) == ("kept", None, None)
+        c.close()
+
+
+def test_add_gates_all_neighbours_including_rejected(conn, tmp_path, capsys, fake_embeddings):
+    ids = [ideas.add(conn, 1, f"Memory {i}", f"summary {i}") for i in range(7)]
+    ideas.set_status(conn, ids[-1], "rejected")
+    argv = ["ideas", "add", "-p", "demo", "--title", "Memory paraphrase", "--summary", "same mechanism",
+            "--db", str(tmp_path / "t.db")]
+    assert cli.main(argv) == 1
+    output = capsys.readouterr().out
+    assert "[7] (rejected, score 1.000) Memory 6: summary 6" in output
+    assert "--distinct-from" in output
+    assert cli.main([*argv, "--distinct-from", "1,2,3,4,5,6"]) == 1
+    assert "Missing: 7" in capsys.readouterr().out
+    assert cli.main([*argv, "--distinct-from", ",".join(map(str, ids))]) == 0
+    capsys.readouterr()
+    events = [json.loads(r[0]) for r in conn.execute("SELECT payload FROM events WHERE kind = 'dedup'")]
+    assert [p["verdict"] for p in events] == ["flagged", "flagged", "unique"]
+    assert events[-1]["distinct_from"] == ids and events[-1]["nearest_id"] == 1
+    assert events[-1]["top_score"] == pytest.approx(1)
+    stats = json.loads(run(tmp_path, capsys, "stats", "-p", "demo", "--json"))
+    assert stats["duplicate_rate"] == pytest.approx(2 / 3)
+
+
+def test_fallback_gates_and_never_stores_vector(conn, tmp_path, capsys):
+    ideas.add(conn, 1, "Memory retrieval", "old summary")
+    argv = ["ideas", "add", "-p", "demo", "--title", "Memory caching", "--db", str(tmp_path / "t.db")]
+    assert cli.main(argv) == 1
+    output = capsys.readouterr()
+    assert "Embeddings unavailable" in output.err and "keyword match" in output.out
+    assert cli.main([*argv, "--distinct-from", "1"]) == 0
+    assert conn.execute("SELECT embedding FROM ideas WHERE id = 2").fetchone()[0] is None
+
+
+def test_unembedded_ideas_still_gate(conn, tmp_path, capsys, fake_embeddings):
+    ideas.add(conn, 1, "Memory retrieval", embedding=None)
+    argv = ["ideas", "add", "-p", "demo", "--title", "Memory caching", "--db", str(tmp_path / "t.db")]
+    assert cli.main(argv) == 1
+    assert "keyword match" in capsys.readouterr().out
+
+
+def test_backfill_batches_project_and_model(conn, tmp_path, capsys, monkeypatch):
+    for i in range(103):
+        ideas.add(conn, 1, f"Memory {i}", "summary", embedding=None)
+    conn.execute("INSERT INTO projects (name, created_at) VALUES ('other', ?)", (db.now(),))
+    conn.commit()
+    ideas.add(conn, 2, "Batch", embedding=None)
+    calls = []
+
+    def fake(texts):
+        calls.append(texts)
+        return [[1., 0.] for _ in texts]
+
+    monkeypatch.setattr(embeddings, "embed", fake)
+    assert "Embedded 103" in run(tmp_path, capsys, "ideas", "embed", "-p", "demo")
+    assert [len(c) for c in calls] == [100, 3]
+    assert calls[0][0] == "Memory 0\nsummary"
+    assert "Embedded 0" in run(tmp_path, capsys, "ideas", "embed", "-p", "demo")
+    assert conn.execute("SELECT embedding FROM ideas WHERE project_id = 2").fetchone()[0] is None
+    monkeypatch.setenv("JARVIS_EMBED_MODEL", "other-model")
+    assert "Embedded 103" in run(tmp_path, capsys, "ideas", "embed", "-p", "demo")
+    assert len(ideas.neighbours(conn, 1, [1., 0.])) == 5
+
+
+def test_edit_reembeds_only_title_or_summary(conn, fake_embeddings, monkeypatch):
+    i = ideas.add(conn, 1, "Memory", "retrieval")
+    before = ideas.get(conn, i)["embedding"]
+    calls = []
+
+    def fake(texts):
+        calls.extend(texts)
+        return fake_embeddings(texts)
+
+    monkeypatch.setattr(embeddings, "embed", fake)
+    ideas.edit(conn, i, append="body only")
+    ideas.edit(conn, i, title="Memory")
+    assert not calls and ideas.get(conn, i)["embedding"] == before
+    ideas.edit(conn, i, title="Batch")
+    assert calls == ["Batch\nretrieval"] and ideas.get(conn, i)["embedding"] != before
+
+
+def test_semantic_search_and_check(conn, tmp_path, capsys, fake_embeddings):
+    i = ideas.add(conn, 1, "Memory", "retrieve facts")
+    ideas.add(conn, 1, "Batch", "scale training")
+    rows = json.loads(run(tmp_path, capsys, "ideas", "search", "memory", "-p", "demo", "--json"))
+    assert rows[0]["id"] == i and rows[0]["score"] == pytest.approx(1)
+    assert "score 1.000" in run(tmp_path, capsys, "ideas", "check", "--title", "Memory", "-p", "demo")
+    assert len(ideas.list_(conn, 1)) == 2
+    assert conn.execute("SELECT COUNT(*) FROM events WHERE kind = 'dedup'").fetchone()[0] == 0
+
+
+def test_agent_cannot_forge_dedup(tmp_path, capsys):
+    run(tmp_path, capsys, "project", "add", "demo")
+    assert cli.main(["event", "dedup", "-p", "demo", "--data", '{"verdict":"unique"}',
+                     "--db", str(tmp_path / "t.db")]) == 1
+    assert "logged by" in capsys.readouterr().err
+
+
+def test_model_and_project_isolation(conn, fake_embeddings, monkeypatch):
+    ideas.add(conn, 1, "Memory", "current")
+    conn.execute("INSERT INTO projects (name, created_at) VALUES ('other', ?)", (db.now(),))
+    conn.commit()
+    ideas.add(conn, 2, "Memory", "other project")
+    assert [r["id"] for r in ideas.neighbours(conn, 1, [1, 0, 0])] == [1]
+    monkeypatch.setenv("JARVIS_EMBED_MODEL", "new-model")
+    assert ideas.neighbours(conn, 1, [1, 0, 0]) == []
+    assert ideas.candidates(conn, 1, "memory", [1, 0, 0]) == [
+        {"id": 1, "title": "Memory", "summary": "current", "status": "proposed", "score": None}]
+
+
+def test_failed_edit_clears_stale_embedding(conn, fake_embeddings, monkeypatch, capsys):
+    i = ideas.add(conn, 1, "Memory")
+
+    def fail(texts):
+        raise OSError("request failed")
+
+    monkeypatch.setattr(embeddings, "embed", fail)
+    ideas.edit(conn, i, summary="changed")
+    idea = ideas.get(conn, i)
+    assert idea["embedding"] is None and idea["embed_model"] is None
+    assert "Embeddings unavailable" in capsys.readouterr().err
+
+
+def test_stats_ignores_old_agent_verdicts(conn, tmp_path, capsys):
+    db.log_event(conn, "dedup", 1, verdict="duplicate")
+    db.log_event(conn, "dedup", 1, verdict="unique")
+    stats = json.loads(run(tmp_path, capsys, "stats", "-p", "demo", "--json"))
+    assert stats["duplicate_rate"] is None
+    run(tmp_path, capsys, "ideas", "add", "-p", "demo", "--title", "First")
+    stats = json.loads(run(tmp_path, capsys, "stats", "-p", "demo", "--json"))
+    assert stats["duplicate_rate"] == 0
+
+
+def test_missing_key_uses_keyword_fallback(conn, tmp_path, capsys, monkeypatch):
+    monkeypatch.setattr(embeddings, "embed", REAL_EMBED)
+    monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
+    monkeypatch.setattr(cli, "load_env", lambda: None)
+    ideas.add(conn, 1, "Memory")
+    output = run(tmp_path, capsys, "ideas", "search", "memory", "-p", "demo")
+    assert "[1] Memory" in output
+    assert cli.main(["ideas", "add", "-p", "demo", "--title", "Memory alternative",
+                     "--db", str(tmp_path / "t.db")]) == 1
+    output = capsys.readouterr()
+    assert "OPENROUTER_API_KEY is not set" in output.err
+    assert "keyword match" in output.out
+
+
+@pytest.mark.parametrize("threshold", ["nan", "inf", "1.1"])
+def test_invalid_threshold_cannot_bypass_gate(conn, tmp_path, capsys, threshold):
+    assert cli.main(["ideas", "add", "-p", "demo", "--title", "Memory", "--threshold", threshold,
+                     "--db", str(tmp_path / "t.db")]) == 1
+    assert "--threshold must" in capsys.readouterr().err
+
+
+def test_embedding_post_and_retry(monkeypatch):
+    import io
+    import urllib.error
+    calls, sleeps = [], []
+
+    def fake(req, timeout):
+        calls.append(req)
+        if len(calls) == 1:
+            raise urllib.error.HTTPError(req.full_url, 429, "Too Many", {"Retry-After": "4"}, io.BytesIO())
+        return io.BytesIO(b'{"data":[{"index":1,"embedding":[0,1]},{"index":0,"embedding":[1,0]}]}')
+
+    monkeypatch.setenv("OPENROUTER_API_KEY", "test-key")
+    monkeypatch.setattr(embeddings.urllib.request, "urlopen", fake)
+    monkeypatch.setattr(embeddings.time, "sleep", sleeps.append)
+    monkeypatch.setattr(embeddings, "embed", REAL_EMBED)
+    assert embeddings.embed(["a", "b"]) == [[1, 0], [0, 1]]
+    assert sleeps == [4]
+    req = calls[0]
+    assert req.get_method() == "POST"
+    assert req.get_header("Authorization") == "Bearer test-key"
+    assert json.loads(req.data) == {"model": embeddings.model(), "input": ["a", "b"]}

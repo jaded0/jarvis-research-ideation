@@ -19,6 +19,8 @@ CREATE TABLE IF NOT EXISTS ideas (
     title      TEXT NOT NULL,
     summary    TEXT NOT NULL DEFAULT '',
     body       TEXT NOT NULL DEFAULT '',
+    embedding  BLOB,
+    embed_model TEXT,
     status     TEXT NOT NULL DEFAULT 'proposed'
                CHECK (status IN ('proposed', 'approved', 'rejected', 'elaborating')),
     created_at TEXT NOT NULL,
@@ -83,10 +85,11 @@ CREATE TABLE IF NOT EXISTS notes (
 --   idea_added    ideas.add                  idea_id                                  -
 --   idea_status   ideas.set_status           idea_id, old, new                        -
 --   idea_edited   ideas.edit                 idea_id, fields                          -
---   dedup_sample  ideas.sample               pool, n                                  -
---   dedup         agent (`jarvis event`)     verdict: duplicate|unique, match?, candidate   stats: duplicate_rate
+--   dedup         CLI ideas add              verdict: flagged|unique, candidate, idea_id?, matches,
+--                                            nearest_id, top_score, distinct_from, source  stats: duplicate_rate
 --   ask_user      agent (`jarvis event`)     reason                                   stats: user_prompts
--- The agent's payload shapes are specified in skill/SKILL.md; keep the two in sync.
+-- duplicate_rate is flagged / (flagged + unique) CLI add attempts, not ground-truth duplicates.
+-- ask_user's payload is specified in skill/SKILL.md.
 CREATE TABLE IF NOT EXISTS events (
     id         INTEGER PRIMARY KEY,
     ts         TEXT NOT NULL,
@@ -110,6 +113,11 @@ def connect(path: str | None = None) -> sqlite3.Connection:
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON")
     conn.executescript(SCHEMA)
+    columns = {r["name"] for r in conn.execute("PRAGMA table_info(ideas)")}
+    for name, kind in (("embedding", "BLOB"), ("embed_model", "TEXT")):
+        if name not in columns:
+            conn.execute(f"ALTER TABLE ideas ADD COLUMN {name} {kind}")
+    conn.commit()
     return conn
 
 

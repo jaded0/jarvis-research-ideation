@@ -19,27 +19,30 @@ jarvis papers search "QUERY" [--source openalex|arxiv|s2] [--limit 10]   # defau
 jarvis papers show PAPER_ID                     # full abstract of a cached paper
 
 jarvis ideas add --title "..." --summary "one or two sentences" [--body "description"] [--paper ID=why]
+jarvis ideas add --title "..." --summary "..." --distinct-from "1,2" [--threshold 0.5] [--paper ID=why]
 jarvis ideas edit ID [--title ...] [--summary ...] [--body "replace description"] [--append "add to description"]
 jarvis ideas list [--status proposed|approved|rejected|elaborating]
 jarvis ideas show ID
 jarvis ideas status ID approved|rejected|elaborating
 jarvis ideas link ID PAPER_ID --why "..."
-jarvis ideas search "KEYWORDS"                  # existing ideas matching any keyword, best first
-jarvis ideas sample [-n 40]                     # random sample of the pool, for dedup
+jarvis ideas check --title "..." --summary "..." # neighbours only; no insertion
+jarvis ideas embed                              # backfill this project's current-model embeddings
+jarvis ideas search "QUERY" [--limit 10]        # semantic neighbours; FTS keyword fallback
 jarvis ideas export [-o ideas.md]
 
 jarvis notes add "..." [--idea ID]
 jarvis notes list
-jarvis event KIND --data '{"...": ...}'        # evaluation log
+jarvis event ask_user --data '{"reason": "..."}' # evaluation log; dedup is CLI-only
 jarvis stats
 ```
 
 ## Protocols
 
 1. **Ground before proposing.** Search the literature for the researcher's problem. Every idea must cite at least one paper you actually retrieved (`--paper`). Never invent paper ids.
-2. **Dedup before adding, one candidate at a time.** Take a fresh sample for every candidate, after adding the previous one, so new ideas are checked against each other too:
-   - Run `jarvis ideas sample` and compare the candidate against the sampled ideas.
-   - If it duplicates one, don't add it. Run `jarvis event dedup --data '{"verdict": "duplicate", "match": ID, "candidate": "TITLE"}'`.
-   - Otherwise run `jarvis event dedup --data '{"verdict": "unique", "candidate": "TITLE"}'`, then `jarvis ideas add`.
+2. **Dedup through add, one candidate at a time.** The CLI embeds title + summary through OpenRouter (`OPENROUTER_API_KEY`), default `openai/text-embedding-3-small`; `JARVIS_EMBED_MODEL` overrides the model. It scans the project's current-model embeddings, including rejected ideas. Cosine scores ≥0.5 gate insertion; `--threshold` on add overrides this gate, not a substitute for reviewing neighbours.
+   - Optionally screen with `jarvis ideas check --title "..." --summary "..."`: it lists neighbours without inserting. Then use the add command above with retrieved paper evidence; add always checks again, so newly accepted ideas are included.
+   - If add refuses, read every flagged neighbour (use `jarvis ideas show ID` for detail). Drop a repeat. Only if genuinely different, retry add with comma-separated `--distinct-from` IDs covering **every** flagged neighbour, including rejected ones. Do not bypass review by raising the threshold.
+   - Missing keys or embedding failures visibly fall back to keyword neighbours, which also gate insertion. Older rows lacking current-model embeddings are keyword-gated even when candidate embedding succeeds. Use `jarvis ideas embed` to backfill the selected project for the current model.
+   - Add automatically logs `dedup` verdicts `flagged` (refused) or `unique` (accepted). Never log dedup yourself: the event command forbids it. `stats` reports `duplicate_rate` = flagged / (flagged + unique) CLI add attempts; retries count, and similarity flags are not ground-truth duplicates.
 3. **Log every time you ask the user something** (each `ask` call counts): `jarvis event ask_user --data '{"reason": "..."}'`. This is how persistence is measured.
 4. **Go easy on the APIs.** Our Semantic Scholar key allows 1 request/s and can be revoked. Before searching, check whether a paper you already found covers it (ideas link their papers; `jarvis papers show ID` works on any id you've seen). Use a few well-chosen queries (about 3 per idea), not many variations. Never loop searches in bash, and never retry a failed search more than once. Identical searches are served from cache automatically.

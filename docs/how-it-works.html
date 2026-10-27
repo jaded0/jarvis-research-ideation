@@ -27,13 +27,13 @@
 <div class="story"><button class="node human" data-go="2" data-focus="researcher"><span class="tag">01 / The question</span><b>You</b><span>“I'm stuck. What could I try next?”</span></button><div class="arrow" aria-hidden="true">→</div><button class="node agent" data-go="2" data-focus="agent"><span class="tag">02 / Your thinking partner</span><b>Jarvis</b><span>Connects your past work with ideas from research.</span></button><div class="arrow" aria-hidden="true">→</div><button class="node human" data-go="2" data-focus="researcher"><span class="tag">03 / Your choice</span><b>A short idea list</b><span>Keep it, skip it, ask for detail, or ask for evidence.</span></button></div>
 <p class="connector">Jarvis checks both ↓ &nbsp; · &nbsp; your choices steer the next round ↺</p>
 <div class="story-bottom"><button class="node data" data-go="2" data-focus="memory"><span class="tag">Memory</span><b>A notebook</b><span>Earlier ideas, what you liked, and project notes.</span></button><button class="node paper" data-go="2" data-focus="sources"><span class="tag">Evidence</span><b>A science library</b><span>Real papers that help explain why an idea is worth trying.</span></button></div>
-<p class="callout">A brainstorming partner, not an automatic scientist. It suggests experiments; you decide and do the work. Checking a sample can miss a repeat.</p>
+<p class="callout">A brainstorming partner, not an automatic scientist. It suggests experiments; you decide and do the work. Similarity flags need review; passing the gate is not proof of novelty.</p>
 </section>
 <section class="level" id="level2" aria-label="Level 2: system components" hidden>
 <div class="system">
 <div class="stack"><button class="node human" data-focus-id="researcher" data-go="3" data-topic="decide"><span class="tag">Human</span><b>Researcher</b><span>Shares context; approves, rejects, requests elaboration or more evidence.</span></button><div class="edge">↓ starts a session &nbsp; ↑ conversation</div><button class="node cli" data-go="4" data-topic="launch"><span class="tag">Entry point</span><b>jarvis chat</b><span>Creates the project if absent. Sets JARVIS_PROJECT, JARVIS_DB and PATH; replaces itself with pi via execvpe.</span></button></div>
 <div class="stack"><button class="node agent" data-focus-id="agent" data-go="3" data-topic="recall"><span class="tag">Reasoning / pi agent harness</span><b>Persona + one skill</b><span>persona.md is appended to the system prompt. Only the jarvis skill is loaded. Tools: read, grep, find, ls, plus bash.</span><span>Reads local project files selectively. The persona says: no code writing or experiments.</span></button><div class="edge">↓ bash: jarvis … &nbsp; ↑ short markdown / optional JSON<br><strong>Every CLI invocation is a separate process.</strong></div><button class="node cli" data-go="4" data-topic="dispatch"><span class="tag">Execution boundary</span><b>jarvis CLI</b><span>Parses a command → opens SQLite → runs one handler → closes. The agent accesses the database and paper APIs only through these commands.</span></button></div>
-<div class="stack"><div class="edge">CLI ⇄ persistent state</div><button class="node data" data-focus-id="memory" data-go="3" data-topic="storage"><span class="tag">SQLite</span><b>jarvis.db</b><span>Projects, ideas, keyword index, paper/search caches, evidence links, notes and events. Default: ./jarvis.db; JARVIS_DB or --db overrides it.</span></button><div class="edge">CLI → search APIs → cached results</div><button class="node paper" data-focus-id="sources" data-go="3" data-topic="research"><span class="tag">Paper sources</span><b>OpenAlex · arXiv · S2</b><span>OpenAlex is the default. Semantic Scholar (S2): 1 req/s limit; local throttle spaces calls ≥1.05 s. Retries back off on 429 / selected 5xx.</span></button></div>
+<div class="stack"><div class="edge">CLI ⇄ persistent state</div><button class="node data" data-focus-id="memory" data-go="3" data-topic="storage"><span class="tag">SQLite</span><b>jarvis.db</b><span>Projects, ideas + embeddings, keyword index, paper/search caches, evidence links, notes and events. Default: ./jarvis.db; JARVIS_DB or --db overrides it.</span></button><div class="edge">CLI → search APIs → cached results</div><button class="node paper" data-focus-id="sources" data-go="3" data-topic="research"><span class="tag">Paper sources</span><b>OpenAlex · arXiv · S2</b><span>OpenAlex is the default. Semantic Scholar (S2): 1 req/s limit; local throttle spaces calls ≥1.05 s. Retries back off on 429 / selected 5xx.</span></button></div>
 </div><p class="callout">The instructions constrain behaviour; bash is not a security sandbox. No Elo ranking, subagents, vector index or web app is implemented here.</p>
 </section>
 <section class="level" id="level3" aria-label="Level 3: processes and data" hidden>
@@ -41,10 +41,10 @@
 <article class="card agent"><span class="tag">Session / persona.md</span><h3>A conversation that loops</h3><div class="steps">
 <div class="step"><button data-go="4" data-topic="recall"><b>1 · Recall → understand</b><br><code>notes list</code> + <code>ideas list</code>. If no summary: read selectively → <code>notes add</code>. Ask where they're stuck.</button></div><div class="down">↓</div>
 <div class="step"><button data-go="4" data-topic="research"><b>2 · Research</b><br>Search method, failure and neighbouring fields. Retrieve real evidence.</button></div><div class="down">↓</div>
-<div class="step"><button data-go="4" data-topic="dedup"><b>3 · Propose about five</b><br>Each candidate: fresh <code>ideas sample</code> → agent verdict → <code>event dedup</code> → <code>ideas add</code> only if unique. Duplicate → skip.</button></div><div class="down">↓</div>
+<div class="step"><button data-go="4" data-topic="dedup"><b>3 · Propose about five</b><br>Each <code>ideas add</code>: embed title + summary → gate neighbours ≥0.5 → accept or flag. Review all flags; drop repeats or retry with all judged-distinct IDs in <code>--distinct-from</code>. Show only accepted ideas.</button></div><div class="down">↓</div>
 <div class="step"><button data-go="4" data-topic="decide"><b>4 · Researcher chooses</b><br>Approve / reject → <code>ideas status</code><br>Elaborate → <code>ideas status ID elaborating</code> + <code>ideas edit ID --append</code><br>Ground → search + <code>ideas link</code></button></div><div class="down">↺ Repeat research / propose; avoid rejected ideas</div></div><p class="mini">Agent instructions, not a hard-coded workflow engine. Log every question with <code>event ask_user</code>.</p></article>
-<article class="card paper"><span class="tag">Retrieval / papers.py + ideas.py</span><h3>Reuse before requesting</h3><div class="steps"><div class="step"><button data-go="4" data-topic="research"><b>Paper search</b><br>Normalize query + source + limit → look up <code>searches</code> (7-day TTL).</button></div><div class="down">↓ cache hit → load paper IDs from papers</div><div class="step"><button data-go="4" data-topic="research"><b>Miss / --refresh</b><br>Source API → normalize results → <code>papers</code> cache + <code>searches</code> record.</button></div><div class="down">↓ real paper IDs support each stored idea</div><div class="step"><button data-go="4" data-topic="dedup"><b>Idea recall ≠ dedup verdict</b><br>Keyword search: <code>ideas_fts</code>, any keyword, rank first.<br>Dedup: random titles + summaries (default n=40, ~12k character budget); compare afresh for each candidate.</button></div></div><p class="mini">S2: file lock coordinates CLI processes sharing the local cache path; not multiple machines. The agent reports “unique” / “duplicate”; SQLite does not decide novelty.</p></article>
-<article class="card data"><span class="tag">Persistence / db.py</span><h3>One file, linked records</h3><button class="schema" style="text-align:left;color:inherit" data-go="4" data-topic="storage"><strong>projects</strong> → ideas, notes, events<br><strong>ideas</strong> ⇄ ideas_fts (FTS5)<br>insert / update / delete triggers sync index<br><strong>ideas</strong> → idea_papers ← papers<br><strong>notes</strong> → optional idea_id<br><strong>searches</strong> ⇢ papers via JSON ID list<br><small>→ foreign key · ⇢ application-level link<br>papers / searches are shared, not project-scoped</small></button><div class="step"><button data-go="4" data-topic="evaluation"><b>events → jarvis stats</b><br>Value = <code>approved_rate</code> ↑<br>Variety = <code>duplicate_rate</code> ↓<br>Persistence = <code>ask_user</code> count ↓</button></div><p class="mini">Approval rate uses current idea statuses. Duplicate rate uses agent-reported dedup events, not measured ground truth. Lower is better for duplicates and prompts; higher for approval.</p></article>
+<article class="card paper"><span class="tag">Retrieval / papers.py + ideas.py</span><h3>Reuse before requesting</h3><div class="steps"><div class="step"><button data-go="4" data-topic="research"><b>Paper search</b><br>Normalize query + source + limit → look up <code>searches</code> (7-day TTL).</button></div><div class="down">↓ cache hit → load paper IDs from papers</div><div class="step"><button data-go="4" data-topic="research"><b>Miss / --refresh</b><br>Source API → normalize results → <code>papers</code> cache + <code>searches</code> record.</button></div><div class="down">↓ real paper IDs support each stored idea</div><div class="step"><button data-go="4" data-topic="dedup"><b>Idea recall ≠ dedup verdict</b><br><code>ideas search</code>: semantic, FTS fallback. <code>ideas check --title … --summary …</code>: neighbours, no insert.<br>Add scans current-model embeddings, including rejected ideas. Unembedded / old-model rows and embedding failures use keyword gates.</button></div></div><p class="mini"><code>ideas embed</code> backfills the project for the current model. OpenRouter: openai/text-embedding-3-small; OPENROUTER_API_KEY, JARVIS_EMBED_MODEL override. S2 lock coordinates local CLI processes, not machines.</p></article>
+<article class="card data"><span class="tag">Persistence / db.py</span><h3>One file, linked records</h3><button class="schema" style="text-align:left;color:inherit" data-go="4" data-topic="storage"><strong>projects</strong> → ideas, notes, events<br><strong>ideas</strong> ⇄ ideas_fts (FTS5)<br>insert / update / delete triggers sync index<br><strong>ideas</strong> → idea_papers ← papers<br><strong>notes</strong> → optional idea_id<br><strong>searches</strong> ⇢ papers via JSON ID list<br><small>→ foreign key · ⇢ application-level link<br>papers / searches are shared, not project-scoped</small></button><div class="step"><button data-go="4" data-topic="evaluation"><b>events → jarvis stats</b><br>Value = <code>approved_rate</code> ↑<br>Variety = <code>duplicate_rate</code> ↓<br>Persistence = <code>ask_user</code> count ↓</button></div><p class="mini">Approval uses current statuses. Duplicate rate = flagged / (flagged + unique) CLI add attempts; retries count. These are similarity flags, not ground truth. Add logs dedup automatically; manual dedup events are forbidden.</p></article>
 </div>
 </section>
 <section class="level" id="level4" aria-label="Level 4: source code" hidden>
@@ -78,7 +78,7 @@
         print(f"error: can't open database {args.db or db.default_path()!r}: {e}", file=sys.stderr)
         return 1
     try:
-        args.fn(conn, args)</pre></article>
+        return args.fn(conn, args) or 0</pre></article>
 <article class="codecard"><header><a data-ref="src/jarvis/cli.py:build_parser.sub" href="https://github.com/jaded0/jarvis-research-ideation/blob/main/src/jarvis/cli.py">cli.py · build_parser → sub</a><p>set_defaults attaches the handler function to the parsed arguments.</p></header><pre data-snippet-for="src/jarvis/cli.py:build_parser.sub">    def sub(group, name, fn, parents=(common,), **kw):
         p = group.add_parser(name, parents=list(parents), **kw)
         p.set_defaults(fn=fn)  # main() calls args.fn(conn, args): this is how a command reaches its handler
@@ -89,10 +89,12 @@
     p.add_argument("--source", choices=list(papers.SOURCES), default="openalex")
     p.add_argument("--limit", type=int, default=10)
     p.add_argument("--refresh", action="store_true", help="ignore a cached identical search")</pre></article>
-<article class="codecard"><header><a data-ref="src/jarvis/db.py:connect" href="https://github.com/jaded0/jarvis-research-ideation/blob/main/src/jarvis/db.py">db.py · connect</a><p>Initialize schema on connection; main closes the connection in finally.</p></header><pre data-snippet-for="src/jarvis/db.py:connect">    conn = sqlite3.connect(path or default_path())
-    conn.row_factory = sqlite3.Row
-    conn.execute("PRAGMA foreign_keys = ON")
-    conn.executescript(SCHEMA)
+<article class="codecard"><header><a data-ref="src/jarvis/db.py:connect" href="https://github.com/jaded0/jarvis-research-ideation/blob/main/src/jarvis/db.py">db.py · connect</a><p>Initialize schema and migrate older ideas tables with embedding columns; main closes in finally.</p></header><pre data-snippet-for="src/jarvis/db.py:connect">    conn.executescript(SCHEMA)
+    columns = {r["name"] for r in conn.execute("PRAGMA table_info(ideas)")}
+    for name, kind in (("embedding", "BLOB"), ("embed_model", "TEXT")):
+        if name not in columns:
+            conn.execute(f"ALTER TABLE ideas ADD COLUMN {name} {kind}")
+    conn.commit()
     return conn</pre></article>
 </div>
 <div class="codepage" data-page="recall" hidden>
@@ -139,24 +141,24 @@ SEARCH_TTL_DAYS = 7</pre></article>
     return results</pre></article>
 </div>
 <div class="codepage" data-page="dedup" hidden>
-<article class="codecard"><header><a data-ref="src/jarvis/ideas.py:sample" href="https://github.com/jaded0/jarvis-research-ideation/blob/main/src/jarvis/ideas.py">ideas.py · sample</a><p>Random titles + summaries, not an automatic similarity score.</p></header><pre data-snippet-for="src/jarvis/ideas.py:sample">    pool = [dict(r) for r in conn.execute(
-        "SELECT id, title, summary FROM ideas WHERE project_id = ?", (project_id,))]
-    picked = random.Random(seed).sample(pool, min(n, len(pool)))
-    out, used = [], 0
-    for idea in picked:
-        size = len(idea["title"]) + len(idea["summary"])
-        if out and used + size &gt; max_chars:
-            break</pre></article>
+<article class="codecard"><header><a data-ref="src/jarvis/ideas.py:neighbours" href="https://github.com/jaded0/jarvis-research-ideation/blob/main/src/jarvis/ideas.py">ideas.py · neighbours</a><p>Whole-project cosine scan, including rejected ideas; compare only current-model vectors.</p></header><pre data-snippet-for="src/jarvis/ideas.py:neighbours">    for r in conn.execute("SELECT id, title, summary, status, embedding FROM ideas "
+                          "WHERE project_id = ? AND embedding IS NOT NULL AND embed_model = ?",
+                          (project_id, embeddings.model())):
+        idea = {k: r[k] for k in ("id", "title", "summary", "status")}
+        idea["score"] = embeddings.cosine(v, embeddings.unpack(r["embedding"]))
+        rows.append(idea)
+    rows.sort(key=lambda r: (-r["score"], r["id"]))
+    return rows[:limit] if limit is not None else rows</pre></article>
 <article class="codecard"><header><a data-ref="src/jarvis/ideas.py:fts_query" href="https://github.com/jaded0/jarvis-research-ideation/blob/main/src/jarvis/ideas.py">ideas.py · fts_query</a><p>Plain keywords: quote each word; any word may match.</p></header><pre data-snippet-for="src/jarvis/ideas.py:fts_query">def fts_query(query: str) -&gt; str:
     """Plain keywords -&gt; an FTS5 query: each word quoted (so '-', ':', quotes, AND etc. are literal), any may match."""
     return " OR ".join('"' + w.replace('"', '""') + '"' for w in query.split())</pre></article>
-<article class="codecard"><header><a data-ref="src/jarvis/ideas.py:search" href="https://github.com/jaded0/jarvis-research-ideation/blob/main/src/jarvis/ideas.py">ideas.py · search</a><p>Keyword recall is a separate command, scoped to the project.</p></header><pre data-snippet-for="src/jarvis/ideas.py:search">    if not query.split():
+<article class="codecard"><header><a data-ref="src/jarvis/ideas.py:search" href="https://github.com/jaded0/jarvis-research-ideation/blob/main/src/jarvis/ideas.py">ideas.py · search</a><p>Project-scoped keyword fallback for retrieval and unembedded dedup neighbours.</p></header><pre data-snippet-for="src/jarvis/ideas.py:search">    if not query.split():
         return []
     return [dict(r) for r in conn.execute(
         "SELECT i.id, i.title, i.summary, i.status FROM ideas_fts f JOIN ideas i ON i.id = f.rowid "
         "WHERE ideas_fts MATCH ? AND i.project_id = ? ORDER BY rank LIMIT ?",
         (fts_query(query), project_id, limit))]</pre></article>
-<article class="codecard"><header><a data-ref="src/jarvis/ideas.py:add" href="https://github.com/jaded0/jarvis-research-ideation/blob/main/src/jarvis/ideas.py">ideas.py · add</a><p>After the agent logs a unique verdict, store the candidate and evidence.</p></header><pre data-snippet-for="src/jarvis/ideas.py:add">    idea_id = cur.lastrowid
+<article class="codecard"><header><a data-ref="src/jarvis/ideas.py:add" href="https://github.com/jaded0/jarvis-research-ideation/blob/main/src/jarvis/ideas.py">ideas.py · add</a><p>After the CLI gate accepts, store the candidate and evidence; the CLI logs unique.</p></header><pre data-snippet-for="src/jarvis/ideas.py:add">    idea_id = cur.lastrowid
     for paper_id, why in papers:
         link_paper(conn, idea_id, paper_id, why)
     conn.commit()
@@ -201,31 +203,33 @@ END;</pre></article>
 );</pre></article>
 </div>
 <div class="codepage" data-page="evaluation" hidden>
-<article class="codecard"><header><a data-ref="src/jarvis/cli.py:cmd_event" href="https://github.com/jaded0/jarvis-research-ideation/blob/main/src/jarvis/cli.py">cli.py · cmd_event</a><p>Agent-reported dedup verdicts and ask_user events enter here.</p></header><pre data-snippet-for="src/jarvis/cli.py:cmd_event">def cmd_event(conn, args):
+<article class="codecard"><header><a data-ref="src/jarvis/cli.py:cmd_event" href="https://github.com/jaded0/jarvis-research-ideation/blob/main/src/jarvis/cli.py">cli.py · cmd_event</a><p>Agent logs ask_user here; dedup is reserved for CLI add attempts.</p></header><pre data-snippet-for="src/jarvis/cli.py:cmd_event">def cmd_event(conn, args):
+    if args.kind == "dedup":
+        raise ValueError("dedup events are logged by `jarvis ideas add`, not `jarvis event`")
     pid = db.project_id(conn, args.project) if args.project else None
     try:
         data = json.loads(args.data)
     except json.JSONDecodeError as e:
         raise ValueError(f"--data is not valid JSON: {e}") from None
     if not isinstance(data, dict):
-        raise ValueError('--data must be a JSON object, e.g. \'{"verdict": "unique"}\'')
-    db.log_event(conn, args.kind, pid, **data)
-    emit(args, {"kind": args.kind}, f"Logged {args.kind}.")</pre></article>
+        raise ValueError('--data must be a JSON object, e.g. \'{"verdict": "unique"}\'')</pre></article>
 <article class="codecard"><header><a data-ref="src/jarvis/db.py:log_event" href="https://github.com/jaded0/jarvis-research-ideation/blob/main/src/jarvis/db.py">db.py · log_event</a><p>Append a timestamp, kind, optional project and JSON payload.</p></header><pre data-snippet-for="src/jarvis/db.py:log_event">    conn.execute(
         "INSERT INTO events (ts, kind, project_id, payload) VALUES (?, ?, ?, ?)",
         (now(), kind, project_id, json.dumps(payload)),
     )
     conn.commit()</pre></article>
-<article class="codecard"><header><a data-ref="src/jarvis/cli.py:cmd_stats" href="https://github.com/jaded0/jarvis-research-ideation/blob/main/src/jarvis/cli.py">cli.py · cmd_stats / rates</a><p>Approval ↑ uses current statuses; duplicates ↓ use dedup event verdicts.</p></header><pre data-snippet-for="src/jarvis/cli.py:cmd_stats">        # value: share of ideas the user approved
+<article class="codecard"><header><a data-ref="src/jarvis/cli.py:cmd_stats" href="https://github.com/jaded0/jarvis-research-ideation/blob/main/src/jarvis/cli.py">cli.py · cmd_stats / rates</a><p>Approval ↑ uses current statuses; duplicate rate ↓ is refused / all CLI add attempts, retries included—not ground truth.</p></header><pre data-snippet-for="src/jarvis/cli.py:cmd_stats">        # value: share of ideas the user approved
         "approved_rate": counts.get("approved", 0) / total if total else None,
         # variety: share of dedup checks that flagged a duplicate
-        "duplicate_rate": verdicts.count("duplicate") / len(verdicts) if verdicts else None,
+        "duplicate_rate": verdicts.count("flagged") / len(verdicts) if verdicts else None,
         # persistence: how often the agent had to prompt the user
         "user_prompts": events.get("ask_user", 0),</pre></article>
-<article class="codecard"><header><a data-ref="src/jarvis/cli.py:cmd_stats" href="https://github.com/jaded0/jarvis-research-ideation/blob/main/src/jarvis/cli.py">cli.py · cmd_stats / event inputs</a><p>Only the selected project's events contribute to these metrics.</p></header><pre data-snippet-for="src/jarvis/cli.py:cmd_stats">    events = dict(conn.execute(
+<article class="codecard"><header><a data-ref="src/jarvis/cli.py:cmd_stats" href="https://github.com/jaded0/jarvis-research-ideation/blob/main/src/jarvis/cli.py">cli.py · cmd_stats / event inputs</a><p>Only selected-project flagged / unique events with embedding or keyword source contribute to duplicate rate.</p></header><pre data-snippet-for="src/jarvis/cli.py:cmd_stats">    events = dict(conn.execute(
         "SELECT kind, COUNT(*) FROM events WHERE project_id = ? GROUP BY kind", (pid,)).fetchall())
-    verdicts = [json.loads(r[0]).get("verdict") for r in conn.execute(
-        "SELECT payload FROM events WHERE project_id = ? AND kind = 'dedup'", (pid,))]</pre></article>
+    verdicts = [p["verdict"] for r in conn.execute(
+        "SELECT payload FROM events WHERE project_id = ? AND kind = 'dedup'", (pid,))
+        if (p := json.loads(r[0])).get("source") in ("embedding", "keyword")
+        and p.get("verdict") in ("flagged", "unique")]</pre></article>
 </div>
 </section>
 </main>
@@ -242,7 +246,7 @@ END;</pre></article>
     dispatch: 'bash runs jarvis → main → build_parser / sub → args.fn(conn, args). No long-lived CLI server.',
     recall: 'Recall → understand → write a summary note. The agent decides what to read and what the summary says.',
     research: 'Research → searches cache → source API on a miss → papers cache. Use --refresh to bypass the search cache.',
-    dedup: 'For every candidate: fresh sample → agent judgment → event dedup → add only if unique. Sampling can miss repeats.',
+    dedup: 'Each add embeds title + summary → cosine ≥0.5 gate (--threshold override) → accept or flag. Review all flagged IDs, including rejected; drop repeats or retry with --distinct-from. CLI logs verdicts; no manual dedup events.',
     decide: 'Choose → status change, append elaboration, or retrieve and link more evidence → repeat research / propose.',
     storage: 'projects → ideas / notes / events; ideas ↔ FTS; ideas → idea_papers ← papers; searches stores paper IDs as JSON.',
     evaluation: 'events → stats: higher approval rate; lower duplicate rate and ask_user count. These are proxies, not ground truth.'
