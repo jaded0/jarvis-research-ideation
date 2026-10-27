@@ -38,6 +38,8 @@ make -C slides clean
 
 The Makefile pins `@marp-team/marp-cli@4.5.1` and finds Chrome on its own. If it guesses wrong, set `CHROME_PATH`.
 
+On every push to `main`, GitHub Actions (`.github/workflows/ci.yml`) runs the tests and builds the slides. The PDF can be downloaded as the `slides` artifact on each run in the [Actions tab](https://github.com/jaded0/jarvis-research-ideation/actions).
+
 ## Layout
 
 - `src/jarvis/db.py`: SQLite schema (projects, ideas + FTS5, papers cache, idea↔paper links, notes, events).

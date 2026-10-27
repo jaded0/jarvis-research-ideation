@@ -1,0 +1,28 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - run: uv run pytest -q
+
+  slides:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      # Ubuntu runners ship Node and Chrome. AppArmor on 24.04 blocks Chrome's sandbox, so turn it off here.
+      - run: make -C slides
+        env:
+          CHROME_NO_SANDBOX: "1"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: slides
+          path: slides/slides.pdf
