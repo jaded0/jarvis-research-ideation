@@ -1,11 +1,17 @@
-# Markdown -> PDF slides. Needs pandoc and xelatex (TeX Live with beamer + metropolis).
-# One slide per level-1 heading; images go in img/ and are referenced as ![](img/foo.png).
+# Markdown -> PDF slides with Marp. Needs Node (npx) and Chrome/Chromium.
+# Slides are separated by `---`; images go in img/ and are referenced as ![](img/foo.png).
+
+MARP = npx -y @marp-team/marp-cli@4.5.1 --allow-local-files
+export CHROME_PATH ?= $(shell command -v google-chrome || command -v chromium || command -v chromium-browser)
 
 slides.pdf: slides.md $(wildcard img/*)
-	pandoc $< -t beamer --pdf-engine=xelatex --resource-path=.:img \
-		-V aspectratio=169 -V theme=metropolis -o $@
+	$(MARP) $< --pdf -o $@
+
+# Live preview in the browser; re-renders on save.
+watch:
+	$(MARP) -s .
 
 clean:
 	rm -f slides.pdf
 
-.PHONY: clean
+.PHONY: watch clean

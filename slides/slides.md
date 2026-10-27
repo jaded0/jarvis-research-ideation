@@ -1,33 +1,53 @@
 ---
-title: "J.A.R.V.I.S."
-subtitle: "Just-in-time Agent for Research Validation & Ideation Support"
-date: 2026-10-27
+marp: true
+theme: default
+paginate: true
 ---
 
-# The problem
+# J.A.R.V.I.S.
+
+**Just-in-time Agent for Research Validation & Ideation Support**
+
+2026-10-27
+
+---
+
+## The problem
 
 - TODO
 
-# What J.A.R.V.I.S. does
+---
+
+## What J.A.R.V.I.S. does
 
 - TODO
 
-# Demo
+---
+
+## Demo
 
 - TODO
 
-# Preliminary results
+---
+
+## Preliminary results
 
 - TODO
 
-# Why it is creative
+---
+
+## Why it is creative
 
 - TODO
 
-# Challenges
+---
+
+## Challenges
 
 - TODO
 
-# Work remaining
+---
+
+## Work remaining
 
 - TODO

@@ -17,7 +17,7 @@
 
 ## Materials
 
-- Slides: [`slides/slides.md`](../slides/slides.md), built to PDF with `make -C slides` (pandoc + beamer + xelatex, metropolis theme). Put images in `slides/img/`.
+- Slides: [`slides/slides.md`](../slides/slides.md), built to PDF with `make -C slides` (Marp; see the README's Slides section). Put images in `slides/img/`.
 - Demo candidate: run `jarvis chat` inside `~/ai-jeans` to show the interface on a real research project.
 - Screenshots: TBD.
 

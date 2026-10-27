@@ -26,6 +26,18 @@ To talk to J.A.R.V.I.S., `cd` into *your research project* and run `jarvis chat`
 
 The database (`jarvis.db`) and the project name default to the current directory. Working on this repo with pi or another coding agent is unaffected; the skill is also linked at `.agents/skills/jarvis` for testing.
 
+## Slides
+
+The slides are in `slides/slides.md`, written as [Marp](https://marp.app) markdown: `---` separates slides, and images go in `slides/img/` as `![](img/foo.png)`. You need Node (for `npx`) and Chrome or Chromium.
+
+```bash
+make -C slides          # build slides/slides.pdf (gitignored)
+make -C slides watch    # live preview server; re-renders on save
+make -C slides clean
+```
+
+The Makefile pins `@marp-team/marp-cli@4.5.1` and finds Chrome on its own. If it guesses wrong, set `CHROME_PATH`.
+
 ## Layout
 
 - `src/jarvis/db.py`: SQLite schema (projects, ideas + FTS5, papers cache, idea↔paper links, notes, events).
@@ -47,7 +59,7 @@ Literature data comes from [Semantic Scholar](https://www.semanticscholar.org) (
   - Page 3: MVP scope. This is the current direction.
 - [`references/`](references/): related work on AI scientists and idea generation.
 - [`docs/presentation.md`](docs/presentation.md): progress presentation (due 2026-10-27, 2 pm), with requirements and a checklist.
-- [`slides/`](slides/): presentation slides in markdown. `make -C slides` builds `slides.pdf` (pandoc + beamer).
+- [`slides/`](slides/): presentation slides in Marp markdown; see [Slides](#slides).
 
 ## MVP direction (from page 3)
 
