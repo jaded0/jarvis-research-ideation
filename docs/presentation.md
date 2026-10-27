@@ -23,4 +23,6 @@
 
 ## Known issues going in
 
-- Semantic Scholar was returning HTTP 429 on 2026-10-26, even with the API key. OpenAlex and arXiv work. For the demo, use `--source openalex` or `--source arxiv`, or have results cached beforehand.
+- Semantic Scholar search was returning HTTP 429 on 2026-10-26, even with the API key ([#6](https://github.com/jaded0/jarvis-research-ideation/issues/6)). OpenAlex, now the default, and arXiv both work. Re-test S2 in the morning.
+- Open decisions: [#5](https://github.com/jaded0/jarvis-research-ideation/issues/5) (GitHub Pages for the diagram), [#7](https://github.com/jaded0/jarvis-research-ideation/issues/7) (OpenAlex key), [#8](https://github.com/jaded0/jarvis-research-ideation/issues/8) (Jason's S2 key), [#9](https://github.com/jaded0/jarvis-research-ideation/issues/9) (save diagram screenshots for slides).
+- The diagram (`docs/how-it-works.html`) is a candidate for the "how it works" slides; levels 1–3 screenshot well.

@@ -78,7 +78,15 @@ CREATE TABLE IF NOT EXISTS notes (
     created_at TEXT NOT NULL
 );
 
--- Append-only log used for evaluation (dedup verdicts, user prompts, status changes, ...).
+-- Append-only log used for evaluation; `jarvis stats` reads it. payload is a JSON object.
+--   kind          logged by                  payload                                  read by
+--   idea_added    ideas.add                  idea_id                                  -
+--   idea_status   ideas.set_status           idea_id, old, new                        -
+--   idea_edited   ideas.edit                 idea_id, fields                          -
+--   dedup_sample  ideas.sample               pool, n                                  -
+--   dedup         agent (`jarvis event`)     verdict: duplicate|unique, match?, candidate   stats: duplicate_rate
+--   ask_user      agent (`jarvis event`)     reason                                   stats: user_prompts
+-- The agent's payload shapes are specified in skill/SKILL.md; keep the two in sync.
 CREATE TABLE IF NOT EXISTS events (
     id         INTEGER PRIMARY KEY,
     ts         TEXT NOT NULL,

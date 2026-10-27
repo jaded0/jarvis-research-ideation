@@ -80,7 +80,7 @@
         args.fn(conn, args)</pre></article>
 <article class="codecard"><header><a data-ref="src/jarvis/cli.py:build_parser.sub" href="https://github.com/jaded0/jarvis-research-ideation/blob/main/src/jarvis/cli.py">cli.py · build_parser → sub</a><p>set_defaults attaches the handler function to the parsed arguments.</p></header><pre data-snippet-for="src/jarvis/cli.py:build_parser.sub">    def sub(group, name, fn, parents=(common,), **kw):
         p = group.add_parser(name, parents=list(parents), **kw)
-        p.set_defaults(fn=fn)
+        p.set_defaults(fn=fn)  # main() calls args.fn(conn, args): this is how a command reaches its handler
         return p</pre></article>
 <article class="codecard"><header><a data-ref="src/jarvis/cli.py:build_parser" href="https://github.com/jaded0/jarvis-research-ideation/blob/main/src/jarvis/cli.py">cli.py · build_parser</a><p>A command registration: paper search defaults to OpenAlex.</p></header><pre data-snippet-for="src/jarvis/cli.py:build_parser">    g = groups.add_parser("papers", help="literature search").add_subparsers(required=True)
     p = sub(g, "search", cmd_papers_search)

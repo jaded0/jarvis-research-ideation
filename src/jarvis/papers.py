@@ -5,6 +5,9 @@ Sources:
             Calls are spaced >= 1 s apart and back off exponentially on 429.
   openalex  OpenAlex works search. Key: OPENALEX_API_KEY (required by OpenAlex since Feb 2026).
   arxiv     arXiv export API. No key.
+
+Entry point: search() near the bottom. Everything above it is per-source plumbing; a new source is a
+search_x + parse_x pair registered in SOURCES.
 """
 
 import fcntl

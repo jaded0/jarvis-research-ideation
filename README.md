@@ -22,7 +22,7 @@ uv run pytest
 To talk to J.A.R.V.I.S., `cd` into *your research project* and run `jarvis chat` (install once with `uv tool install -e ~/jarvis`, or use `uv run --project ~/jarvis jarvis chat`). This launches [pi](https://github.com/badlogic/pi-mono) with:
 - the persona in `src/jarvis/persona.md`, appended to pi's system prompt
 - only the jarvis skill (`src/jarvis/skill/`)
-- read-only tools plus bash, so it can't edit your files
+- no edit/write tools, so it doesn't change your files. It still has bash, so this is a convention, not a sandbox
 - Haiku 5.5 through OpenRouter, with Ctrl+P switching to Luna. Override with `JARVIS_MODELS=provider/model,...`, and pass extra pi flags after `--`.
 
 The database defaults to `./jarvis.db` (override with `$JARVIS_DB` or `--db`). Only `jarvis chat` defaults the project name to the current directory's name; other project-scoped commands need `$JARVIS_PROJECT` or `-p NAME`. Working on this repo with pi or another coding agent is unaffected; the skill is also linked at `.agents/skills/jarvis` for testing.
@@ -63,11 +63,12 @@ On every push to `main`, GitHub Actions (`.github/workflows/ci.yml`) runs the te
 
 ## Layout
 
-- `src/jarvis/db.py`: SQLite schema (projects, ideas + FTS5, papers cache, idea↔paper links, notes, events).
+- `src/jarvis/db.py`: SQLite schema (projects, ideas + FTS5, papers cache, idea↔paper links, notes, events). The schema comment lists every event kind and which stat reads it.
 - `src/jarvis/ideas.py`: the idea pool, including `sample` for naive dedup (a random n, capped by characters).
 - `src/jarvis/papers.py`: Semantic Scholar / OpenAlex / arXiv search; results are cached in `papers`.
 - `src/jarvis/cli.py`: the `jarvis` command; `stats` reports value, variety and persistence from `events`; `chat` launches pi.
 - `src/jarvis/persona.md`: the J.A.R.V.I.S. persona (session flow, idea format, behaviour).
+- `src/jarvis/skill/SKILL.md`: the agent's CLI reference and protocols (dedup, event logging, API etiquette). The persona says *how to behave*, the skill says *which commands to run*; each rule lives in one of them.
 
 ## Data sources
 

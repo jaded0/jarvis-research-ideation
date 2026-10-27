@@ -16,6 +16,7 @@ DEFAULT_MODELS = "openrouter/anthropic/claude-haiku-5.5,openrouter/openai/gpt-5.
 
 
 def emit(args, data, md) -> None:
+    """Print `data` as JSON with --json, else as markdown. `md` is a string or a function of `data`."""
     if args.json:
         print(json.dumps(data, indent=2, default=str))
     else:
@@ -134,6 +135,7 @@ def cmd_notes_list(conn, args):
 
 
 def cmd_papers_search(conn, args):
+    # Fresh results carry the raw API response under "raw"; it's stored, never shown.
     emit(args, [{k: v for k, v in p.items() if k != "raw"}
                 for p in papers.search(conn, args.query, args.source, args.limit, args.refresh)], paper_lines)
 
@@ -158,6 +160,13 @@ def cmd_event(conn, args):
 
 
 def cmd_stats(conn, args):
+    """Evaluation metrics, from the ideas table and the events log (event kinds are listed in db.py).
+
+    value        approved_rate: approved / all ideas, proposed ones included. Higher is better.
+    variety      duplicate_rate: share of the agent's own dedup verdicts that said "duplicate". Lower is
+                 better. It measures what the agent reports, not ground truth.
+    persistence  user_prompts: how many times the agent logged asking the user. Lower is better.
+    """
     pid = db.project_id(conn, args.project)
     counts = dict(conn.execute(
         "SELECT status, COUNT(*) FROM ideas WHERE project_id = ? GROUP BY status", (pid,)).fetchall())
@@ -178,6 +187,8 @@ def cmd_stats(conn, args):
     }
     emit(args, stats, lambda s: "\n".join(f"- {k}: {v}" for k, v in s.items()))
 
+
+# --- chat: hand the terminal over to pi ---------------------------------------
 
 def pi_command(args) -> list[str]:
     models = os.environ.get("JARVIS_MODELS", DEFAULT_MODELS)
@@ -214,6 +225,8 @@ def build_parser() -> argparse.ArgumentParser:
     common.add_argument("--json", action="store_true", help="machine-readable output")
     common.add_argument("--db", default=None, help="database path (default: $JARVIS_DB or ./jarvis.db)")
 
+    # -p is required only if $JARVIS_PROJECT is unset (decided when the parser is built). `event` and
+    # `chat` define their own optional -p; chat falls back to the current directory's name.
     proj = argparse.ArgumentParser(add_help=False)
     proj.add_argument("-p", "--project", default=os.environ.get("JARVIS_PROJECT"),
                       required="JARVIS_PROJECT" not in os.environ, help="project name (default: $JARVIS_PROJECT)")
@@ -223,7 +236,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     def sub(group, name, fn, parents=(common,), **kw):
         p = group.add_parser(name, parents=list(parents), **kw)
-        p.set_defaults(fn=fn)
+        p.set_defaults(fn=fn)  # main() calls args.fn(conn, args): this is how a command reaches its handler
         return p
 
     g = groups.add_parser("project", help="manage projects").add_subparsers(required=True)
