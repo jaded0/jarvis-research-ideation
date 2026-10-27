@@ -14,40 +14,62 @@ paginate: true
 
 ## The problem
 
-- TODO
+- A researcher can have blind spots.
+- It's easy to get stuck on a hard problem, and advisors can not be available at all times.
 
 ---
 
 ## What J.A.R.V.I.S. does
 
-- TODO
+It's a chat agent, like claude code. 
+Interface is built atop pi (minimal TUI coding assistant). Our work is composed of persona.md, .md skills, a sqlite database, ui extensions, and backend work for paper source retrieval. 
+Paper sources: arxiv, openalex, and semantic scholar.
+
+![w:850](img/architecture.svg)
 
 ---
 
 ## Demo
 
-- TODO
+![opening question](img/opening-prompt.png)
+
+---
+
+## Demo
+
+![idea selection](image.png)
 
 ---
 
 ## Preliminary results
 
-- TODO
+- Because it's in idea-realm, I'm not concerned with accuracy moreso than breadth.
+- The results, subjectively, have breadth as well as relevance. 
 
 ---
 
 ## Why it is creative
 
-- TODO
+- Novelty: Dedup means that ideas progressively move on from what's already been seen.
+- Ranking: Ideas are ranked by subective next-step promise in an Elo system.
+
+---
+
+## Deduplication
+
+- Candidate new ideas are generated.
+- Simple embeddings compare similarity to others in the database, rejecting too-similar new ideas.
+
+We'll consider more sophisticated final judgements of uniqueness in another pass.
 
 ---
 
 ## Challenges
 
-- TODO
+- addressed in previous slides
 
 ---
 
 ## Work remaining
 
-- TODO
+- Deeper eval of deduplication and ranking.
