@@ -25,7 +25,7 @@ It's a chat agent, like claude code.
 Interface is built atop pi (minimal TUI coding assistant). Our work is composed of persona.md, .md skills, a sqlite database, ui extensions, and backend work for paper source retrieval. 
 Paper sources: arxiv, openalex, and semantic scholar.
 
-![w:850](img/architecture.svg)
+![w:900](img/architecture.svg)
 
 ---
 
@@ -61,6 +61,15 @@ Paper sources: arxiv, openalex, and semantic scholar.
 - Simple embeddings compare similarity to others in the database, rejecting too-similar new ideas.
 
 We'll consider more sophisticated final judgements of uniqueness in another pass.
+
+---
+
+## Ranking
+
+- Ideas are ranked by Elo score. 
+- When an idea is accepted, 3 judge calls compare it to 3 other (semantically) nearby ideas.
+
+![w:850](img/ideas-pane.png)
 
 ---
 
