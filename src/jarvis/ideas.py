@@ -64,12 +64,16 @@ def get(conn: sqlite3.Connection, idea_id: int) -> dict:
     return idea
 
 
-def list_(conn: sqlite3.Connection, project_id: int, status: str | None = None) -> list[dict]:
-    sql, args = "SELECT id, title, summary, status FROM ideas WHERE project_id = ?", [project_id]
+def list_(conn: sqlite3.Connection, project_id: int, status: str | None = None, ranked: bool = False) -> list[dict]:
+    sql, args = ("SELECT id, title, summary, status, elo, "
+                 "(SELECT COUNT(*) FROM comparisons c WHERE c.winner_id = ideas.id OR c.loser_id = ideas.id) "
+                 "AS comparisons FROM ideas WHERE project_id = ?"), [project_id]
     if status:
         sql += " AND status = ?"
         args.append(status)
-    return [dict(r) for r in conn.execute(sql + " ORDER BY id", args)]
+    order = ("CASE status WHEN 'approved' THEN 0 WHEN 'elaborating' THEN 0 "
+             "WHEN 'proposed' THEN 1 ELSE 2 END, elo DESC, id") if ranked else "id"
+    return [dict(r) for r in conn.execute(sql + " ORDER BY " + order, args)]
 
 
 def set_status(conn: sqlite3.Connection, idea_id: int, status: str) -> None:

@@ -21,7 +21,9 @@ jarvis papers show PAPER_ID                     # full abstract of a cached pape
 jarvis ideas add --title "..." --summary "one or two sentences" [--body "description"] [--paper ID=why]
 jarvis ideas add --title "..." --summary "..." --distinct-from "1,2" [--threshold 0.5] [--paper ID=why]
 jarvis ideas edit ID [--title ...] [--summary ...] [--body "replace description"] [--append "add to description"]
-jarvis ideas list [--status proposed|approved|rejected|elaborating]
+jarvis ideas list [--status proposed|approved|rejected|elaborating] [--ranked]
+jarvis ideas prefer WINNER_ID LOSER_ID [--why "..."] # researcher preference; no API call
+jarvis ideas rank [--rounds 1]                  # on demand only: refresh after a direction change
 jarvis ideas show ID
 jarvis ideas status ID approved|rejected|elaborating
 jarvis ideas link ID PAPER_ID --why "..."
@@ -37,6 +39,8 @@ jarvis stats
 ```
 
 ## Protocols
+
+Ranking means **most promising for this researcher to try next**: approved/elaborating first, then proposed, then rejected; Elo descending within each tier. `ideas list --ranked` includes Elo and comparison counts, with no judgments. Accepted adds make at most three concurrent model judgments against nearby-Elo non-rejected ideas. `prefer` records a user judgment with twice the model's Elo weight (K=64 vs 32). `rank` explicitly requests Swiss-style rounds (adjacent non-rejected ideas by Elo); it prints the call count, ⌊M/2⌋ per round. It is never automatic. OpenRouter judge: `anthropic/claude-haiku-5.5`, overridden by `JARVIS_JUDGE_MODEL`; uses `OPENROUTER_API_KEY` and the project description plus the latest note starting with `PROJECT SUMMARY`. Start project-summary notes with that prefix.
 
 1. **Ground before proposing.** Search the literature for the researcher's problem. Every idea must cite at least one paper you actually retrieved (`--paper`). Never invent paper ids.
 2. **Dedup through add, one candidate at a time.** The CLI embeds title + summary through OpenRouter (`OPENROUTER_API_KEY`), default `openai/text-embedding-3-small`; `JARVIS_EMBED_MODEL` overrides the model. It scans the project's current-model embeddings, including rejected ideas. Cosine scores ≥0.5 gate insertion; `--threshold` on add overrides this gate, not a substitute for reviewing neighbours.

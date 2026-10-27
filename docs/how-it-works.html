@@ -54,6 +54,7 @@
 <article class="codecard"><header><a data-ref="src/jarvis/cli.py:pi_command" href="https://github.com/jaded0/jarvis-research-ideation/blob/main/src/jarvis/cli.py">cli.py · pi_command</a><p>Persona is appended; disable other skills; read-only tools plus bash, and the card-based <code>ask</code> tool.</p></header><pre data-snippet-for="src/jarvis/cli.py:pi_command">        "--append-system-prompt", os.path.join(HERE, "persona.md"),
         "--no-skills", "--skill", os.path.join(HERE, "skill"),  # only our skill, to keep context small
         "--extension", os.path.join(HERE, "ask.ts"),  # the `ask` tool: answer menus as cards, not typed codes
+        "--extension", os.path.join(HERE, "ideas_pane.ts"),
         "--tools", "read,bash,grep,find,ls,ask",  # no edit/write: JARVIS suggests, it doesn't change files
         *extra,
         *([] if resuming else ["Begin the session."]),</pre></article>
@@ -89,9 +90,9 @@
     p.add_argument("--source", choices=list(papers.SOURCES), default="openalex")
     p.add_argument("--limit", type=int, default=10)
     p.add_argument("--refresh", action="store_true", help="ignore a cached identical search")</pre></article>
-<article class="codecard"><header><a data-ref="src/jarvis/db.py:connect" href="https://github.com/jaded0/jarvis-research-ideation/blob/main/src/jarvis/db.py">db.py · connect</a><p>Initialize schema and migrate older ideas tables with embedding columns; main closes in finally.</p></header><pre data-snippet-for="src/jarvis/db.py:connect">    conn.executescript(SCHEMA)
+<article class="codecard"><header><a data-ref="src/jarvis/db.py:connect" href="https://github.com/jaded0/jarvis-research-ideation/blob/main/src/jarvis/db.py">db.py · connect</a><p>Initialize schema and migrate older ideas tables with embedding and Elo columns; main closes in finally.</p></header><pre data-snippet-for="src/jarvis/db.py:connect">    conn.executescript(SCHEMA)
     columns = {r["name"] for r in conn.execute("PRAGMA table_info(ideas)")}
-    for name, kind in (("embedding", "BLOB"), ("embed_model", "TEXT")):
+    for name, kind in (("embedding", "BLOB"), ("embed_model", "TEXT"), ("elo", "REAL NOT NULL DEFAULT 1000")):
         if name not in columns:
             conn.execute(f"ALTER TABLE ideas ADD COLUMN {name} {kind}")
     conn.commit()
@@ -102,11 +103,15 @@
     rows = [dict(r) for r in conn.execute(
         "SELECT id, idea_id, body, created_at FROM notes WHERE project_id = ? ORDER BY id",
         (db.project_id(conn, args.project),))]</pre></article>
-<article class="codecard"><header><a data-ref="src/jarvis/ideas.py:list_" href="https://github.com/jaded0/jarvis-research-ideation/blob/main/src/jarvis/ideas.py">ideas.py · list_</a><p>Recall the idea pool; optional status filter.</p></header><pre data-snippet-for="src/jarvis/ideas.py:list_">    sql, args = "SELECT id, title, summary, status FROM ideas WHERE project_id = ?", [project_id]
+<article class="codecard"><header><a data-ref="src/jarvis/ideas.py:list_" href="https://github.com/jaded0/jarvis-research-ideation/blob/main/src/jarvis/ideas.py">ideas.py · list_</a><p>Recall the idea pool; optional status filter. Ranked lists and the chat pane sort by status tier then Elo without judge calls. Accepted adds make at most three judgments; Swiss re-ranking is on demand only.</p></header><pre data-snippet-for="src/jarvis/ideas.py:list_">    sql, args = ("SELECT id, title, summary, status, elo, "
+                 "(SELECT COUNT(*) FROM comparisons c WHERE c.winner_id = ideas.id OR c.loser_id = ideas.id) "
+                 "AS comparisons FROM ideas WHERE project_id = ?"), [project_id]
     if status:
         sql += " AND status = ?"
         args.append(status)
-    return [dict(r) for r in conn.execute(sql + " ORDER BY id", args)]</pre></article>
+    order = ("CASE status WHEN 'approved' THEN 0 WHEN 'elaborating' THEN 0 "
+             "WHEN 'proposed' THEN 1 ELSE 2 END, elo DESC, id") if ranked else "id"
+    return [dict(r) for r in conn.execute(sql + " ORDER BY " + order, args)]</pre></article>
 <article class="codecard"><header><a data-ref="src/jarvis/cli.py:cmd_notes_add" href="https://github.com/jaded0/jarvis-research-ideation/blob/main/src/jarvis/cli.py">cli.py · cmd_notes_add</a><p>Store the project summary, written by the agent after selective reading.</p></header><pre data-snippet-for="src/jarvis/cli.py:cmd_notes_add">def cmd_notes_add(conn, args):
     if args.idea is not None:
         ideas.get(conn, args.idea)  # raises &quot;no idea with id N&quot; instead of a foreign-key error

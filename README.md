@@ -23,6 +23,7 @@ To talk to J.A.R.V.I.S., `cd` into *your research project* and run `jarvis chat`
 - the persona in `src/jarvis/persona.md`, appended to pi's system prompt
 - only the jarvis skill (`src/jarvis/skill/`)
 - the `ask` tool (`src/jarvis/ask.ts`, a pi extension): choices are shown as cards, one at a time, answered with a letter, the arrow keys or a click, with a note per card and a summary page to submit from
+- a ranked-ideas pane (top eight, visible by default); toggle with **Alt+I** or `/ideas`. It refreshes after agent turns without calling the judge
 - no edit/write tools, so it doesn't change your files. It still has bash, so this is a convention, not a sandbox
 - Haiku 5.5 through OpenRouter, with Ctrl+P switching to Luna. Override with `JARVIS_MODELS=provider/model,...`, and pass extra pi flags after `--`.
 
@@ -35,6 +36,14 @@ You tell Jarvis what you're working on and where you're stuck. It remembers earl
 `ideas add` embeds title + summary through OpenRouter using `openai/text-embedding-3-small` (`OPENROUTER_API_KEY`; override the model with `JARVIS_EMBED_MODEL`). Cosine similarity ≥0.5 gates insertion (`--threshold` overrides it). Read every flagged neighbour, then drop a repeat or retry with `--distinct-from 1,2` naming **all** flagged IDs judged different, including rejected ideas. If embeddings are unavailable, keyword matches gate insertion instead; older rows without current-model embeddings are keyword-gated too.
 
 Use `jarvis ideas check --title "..." --summary "..."` to list neighbours without inserting, `jarvis ideas embed` to backfill the selected project's missing or old-model embeddings, and `jarvis ideas search "QUERY"` for semantic retrieval with FTS keyword fallback. The CLI logs `dedup` verdicts (`flagged` / `unique`) automatically; manual `event dedup` is forbidden. In `stats`, `duplicate_rate` is flagged / (flagged + unique) CLI add attempts, counting retries—not ground-truth duplicates.
+
+### Which idea to try next
+
+`jarvis ideas list --ranked` orders approved/elaborating ideas first, then proposed, then rejected, with Elo descending within each tier. It shows Elo and comparison counts (`--json` includes both); the default list stays in insertion order. Ratings start at 1000. `jarvis ideas prefer WINNER_ID LOSER_ID --why "..."` records a researcher preference without an API call (K=64; model judgments use K=32).
+
+Cost is bounded: each accepted CLI add makes at most three concurrent pairwise judge calls against the closest starting-Elo non-rejected ideas (fewer for a small pool), once on insertion. Judge failures warn without failing the add. Listing and the pane never judge. Only an explicit `jarvis ideas rank --rounds 1` refreshes existing rankings, pairing adjacent non-rejected ideas by current Elo for ⌊M/2⌋ calls per round; it prints the count first. HTTP 429/selected 5xx retries are capped at three attempts per judgment. No background re-ranking runs.
+
+The judge uses OpenRouter chat completions, `anthropic/claude-haiku-5.5` (`JARVIS_JUDGE_MODEL` override, `OPENROUTER_API_KEY`). It sees the project description, the latest note starting with `PROJECT SUMMARY` (if present), and both ideas; A/B order is randomized. Keep that summary short and current.
 
 ```mermaid
 flowchart LR
@@ -68,12 +77,14 @@ On every push to `main`, GitHub Actions (`.github/workflows/ci.yml`) runs the te
 
 ## Layout
 
-- `src/jarvis/db.py`: SQLite schema and migration of older idea tables to float32 embedding blobs + model names (projects, ideas + FTS5, papers cache, idea↔paper links, notes, events). The schema comment lists every event kind and which stat reads it.
+- `src/jarvis/db.py`: SQLite schema and migrations (embeddings, Elo; projects, ideas + FTS5, comparisons, papers cache, idea↔paper links, notes, events). The schema comment lists every event kind and which stat reads it.
 - `src/jarvis/ideas.py`: the idea pool, current-model cosine neighbours, keyword fallback, dedup flags and embedding backfill.
 - `src/jarvis/embeddings.py`: stdlib OpenRouter POST, retries, float32 packing and cosine similarity.
+- `src/jarvis/ranking.py`: pairwise OpenRouter judge, bounded add comparisons, Swiss rounds and Elo updates.
 - `src/jarvis/papers.py`: Semantic Scholar / OpenAlex / arXiv search; results are cached in `papers`.
 - `src/jarvis/cli.py`: the `jarvis` command; `stats` reports value, variety and persistence from `events`; `chat` launches pi.
 - `src/jarvis/ask.ts`: the pi extension behind the `ask` tool (card-by-card choices; mouse works in pi's fullscreen mode).
+- `src/jarvis/ideas_pane.ts`: toggleable ranked-ideas widget, refreshed through the read-only CLI list.
 - `src/jarvis/persona.md`: the J.A.R.V.I.S. persona (session flow, idea format, behaviour).
 - `src/jarvis/skill/SKILL.md`: the agent's CLI reference and protocols (dedup, event logging, API etiquette). The persona says *how to behave*, the skill says *which commands to run*; each rule lives in one of them.
 
@@ -95,7 +106,7 @@ Literature data comes from [Semantic Scholar](https://www.semanticscholar.org) (
 ## MVP direction (from page 3)
 
 - Agent harness: [pi](https://github.com/badlogic/pi-mono). The tools are a plain CLI + skill, so the harness can be swapped.
-- A basic chatbot UI; the only special feature is an occasional multiple-choice prompt.
+- A basic chatbot UI with occasional multiple-choice prompts and a toggleable ranked-ideas pane.
 - RAG tools: arXiv search, plus an ideas DB linking to papers, notes, and summaries.
 - Agents: a main chat agent, a dedup evaluator, and maybe research-specific subagents.
 - Models: cheap API models. Claude Haiku is the default; OpenAI Luna is the alternate.

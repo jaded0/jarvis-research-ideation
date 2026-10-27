@@ -9,7 +9,7 @@ import shutil
 import sqlite3
 import sys
 
-from . import db, ideas, papers
+from . import db, ideas, papers, ranking
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ENV_FILE = os.path.join(HERE, "..", "..", ".env")  # repo-root .env (API keys), when run from a checkout
@@ -29,11 +29,12 @@ def clip(text: str, n: int) -> str:
     return text if len(text) <= n else text[: n - 1] + "…"
 
 
-def idea_lines(rows) -> str:
+def idea_lines(rows, ranked: bool = False) -> str:
     if not rows:
         return "(no ideas)"
     return "\n".join(
         f"- [{r['id']}] {r['title']}" + (f" ({r['status']})" if "status" in r else "")
+        + (f" — Elo {r['elo']:.0f}, {r['comparisons']} comparisons" if ranked else "")
         + (f": {clip(r['summary'], 200)}" if r.get("summary") else "")
         for r in rows)
 
@@ -83,6 +84,7 @@ def cmd_ideas_add(conn, args):
     links = [tuple(x.strip() for x in p.split("=", 1)) if "=" in p else (p.strip(), "") for p in args.paper]
     idea_id = ideas.add(conn, pid, args.title, args.summary, args.body, links, embedding=v)
     db.log_event(conn, "dedup", pid, verdict="unique", idea_id=idea_id, **payload)
+    ranking.on_add(conn, pid, idea_id)
     emit(args, {"id": idea_id}, f"Added idea {idea_id}.")
 
 
@@ -106,7 +108,25 @@ def cmd_ideas_embed(conn, args):
 
 
 def cmd_ideas_list(conn, args):
-    emit(args, ideas.list_(conn, db.project_id(conn, args.project), args.status), idea_lines)
+    rows = ideas.list_(conn, db.project_id(conn, args.project), args.status, args.ranked)
+    emit(args, rows, lambda rs: idea_lines(rs, args.ranked))
+
+
+def cmd_ideas_prefer(conn, args):
+    comparison = ranking.record(conn, args.winner_id, args.loser_id, reason=args.why)
+    emit(args, {"id": comparison, "winner_id": args.winner_id, "loser_id": args.loser_id},
+         f"Recorded preference for idea {args.winner_id} over {args.loser_id}.")
+
+
+def cmd_ideas_rank(conn, args):
+    if args.rounds < 1:
+        raise ValueError("--rounds must be at least 1")
+    pid = db.project_id(conn, args.project)
+    n = conn.execute("SELECT COUNT(*) FROM ideas WHERE project_id = ? AND status != 'rejected'", (pid,)).fetchone()[0]
+    calls = (n // 2) * args.rounds
+    print(f"Ranking: {calls} judge calls ({args.rounds} rounds).", file=sys.stderr, flush=True)
+    completed = ranking.rank(conn, pid, args.rounds)
+    emit(args, {"calls": calls, "comparisons": completed}, f"Recorded {completed} comparisons.")
 
 
 def cmd_ideas_show(conn, args):
@@ -245,6 +265,7 @@ def pi_command(args) -> list[str]:
         "--append-system-prompt", os.path.join(HERE, "persona.md"),
         "--no-skills", "--skill", os.path.join(HERE, "skill"),  # only our skill, to keep context small
         "--extension", os.path.join(HERE, "ask.ts"),  # the `ask` tool: answer menus as cards, not typed codes
+        "--extension", os.path.join(HERE, "ideas_pane.ts"),
         "--tools", "read,bash,grep,find,ls,ask",  # no edit/write: JARVIS suggests, it doesn't change files
         *extra,
         *([] if resuming else ["Begin the session."]),
@@ -303,6 +324,13 @@ def build_parser() -> argparse.ArgumentParser:
                    help="cached paper id that supports the idea (repeatable)")
     p = sub(g, "list", cmd_ideas_list, (common, proj))
     p.add_argument("--status", choices=ideas.STATUSES)
+    p.add_argument("--ranked", action="store_true", help="status tier, then Elo; no judge calls")
+    p = sub(g, "prefer", cmd_ideas_prefer, help="record a researcher preference; no judge call")
+    p.add_argument("winner_id", type=int)
+    p.add_argument("loser_id", type=int)
+    p.add_argument("--why", default="")
+    p = sub(g, "rank", cmd_ideas_rank, (common, proj), help="on-demand Swiss rounds of model judgments")
+    p.add_argument("--rounds", type=int, default=1)
     p = sub(g, "show", cmd_ideas_show)
     p.add_argument("id", type=int)
     p = sub(g, "edit", cmd_ideas_edit, help="change an idea; --append adds an elaboration to its description")

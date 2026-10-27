@@ -3,15 +3,19 @@ import os
 
 import pytest
 
-from jarvis import cli, db, embeddings, ideas, papers
+from jarvis import cli, db, embeddings, ideas, papers, ranking
 
 REAL_EMBED = embeddings.embed
+REAL_JUDGE = ranking.judge
 
 @pytest.fixture(autouse=True)
-def no_embedding_network(monkeypatch):
+def no_model_network(monkeypatch):
     def unavailable(texts):
         raise ValueError("offline test")
+    def unavailable_judge(*args):
+        raise ValueError("offline test")
     monkeypatch.setattr(embeddings, "embed", unavailable)
+    monkeypatch.setattr(ranking, "judge", unavailable_judge)
 
 
 @pytest.fixture
@@ -92,6 +96,9 @@ def test_pi_command_uses_persona_and_only_our_skill():
     assert "--thinking" in cmd and "--" not in cmd
     assert "ask" in cmd[cmd.index("--tools") + 1].split(",")
     assert os.path.exists(cmd[cmd.index("--extension") + 1])
+    extensions = [cmd[i + 1] for i, arg in enumerate(cmd) if arg == "--extension"]
+    assert [os.path.basename(p) for p in extensions] == ["ask.ts", "ideas_pane.ts"]
+    assert all(os.path.exists(p) for p in extensions)
     assert cmd[-1] == "Begin the session."
     resumed = cli.pi_command(cli.build_parser().parse_args(["chat", "-p", "x", "--", "-c"]))
     assert resumed[-1] == "-c"
@@ -236,6 +243,7 @@ def test_every_skill_command_parses(monkeypatch):
     for line in lines:
         line = re.sub(r"\[([^\]]*)\]", lambda m: m.group(1).split("|")[0], line)  # [--x a|b] -> --x a
         line = re.sub(r"(\w+)\|[\w|]+", r"\1", line)                             # a|b|c -> a
+        line = line.replace("WINNER_ID", "1").replace("LOSER_ID", "2")
         line = line.replace("ID", "1").replace("NAME", "x").replace("KIND", "dedup")
         parser.parse_args(shlex.split(line)[1:])  # SystemExit fails the test
 
@@ -244,7 +252,9 @@ def test_migrate_old_database(tmp_path):
     import sqlite3
     path = str(tmp_path / "old.db")
     c = sqlite3.connect(path)
-    c.executescript(db.SCHEMA.replace("    embedding  BLOB,\n", "").replace("    embed_model TEXT,\n", ""))
+    c.executescript(db.SCHEMA.replace("    embedding  BLOB,\n", "").replace("    embed_model TEXT,\n", "")
+                    .replace("    elo        REAL NOT NULL DEFAULT 1000,\n", ""))
+    c.execute("DROP TABLE comparisons")
     c.execute("INSERT INTO projects (name, created_at) VALUES ('old', ?)", (db.now(),))
     c.execute("INSERT INTO ideas (project_id, title, created_at, updated_at) VALUES (1, 'kept', ?, ?)",
               (db.now(), db.now()))
@@ -252,8 +262,9 @@ def test_migrate_old_database(tmp_path):
     c.close()
     for _ in range(2):
         c = db.connect(path)
-        row = c.execute("SELECT title, embedding, embed_model FROM ideas").fetchone()
-        assert tuple(row) == ("kept", None, None)
+        row = c.execute("SELECT title, embedding, embed_model, elo FROM ideas").fetchone()
+        assert tuple(row) == ("kept", None, None, 1000)
+        assert c.execute("SELECT COUNT(*) FROM comparisons").fetchone()[0] == 0
         c.close()
 
 
@@ -429,3 +440,156 @@ def test_embedding_post_and_retry(monkeypatch):
     assert req.get_method() == "POST"
     assert req.get_header("Authorization") == "Bearer test-key"
     assert json.loads(req.data) == {"model": embeddings.model(), "input": ["a", "b"]}
+
+
+def test_add_judges_three_closest_concurrently(conn, tmp_path, capsys, monkeypatch):
+    import threading
+    ids = [ideas.add(conn, 1, f"old{i}", embedding=None) for i in range(6)]
+    conn.executemany("UPDATE ideas SET elo = ? WHERE id = ?", zip([800, 999, 1005, 1020, 1000, 1400], ids))
+    conn.commit()
+    ideas.set_status(conn, ids[4], "rejected")
+    conn.execute("INSERT INTO projects (name, created_at) VALUES ('other', ?)", (db.now(),))
+    conn.commit()
+    ideas.add(conn, 2, "other", embedding=None)
+    calls, barrier = [], threading.Barrier(3)
+
+    def judge(project, a, b, model):
+        calls.append((a["id"], b["id"]))
+        barrier.wait(timeout=5)  # Sequential calls would fail rather than record judgments.
+        return a["id"], "Cheaper first test."
+
+    monkeypatch.setattr(ranking, "judge", judge)
+    run(tmp_path, capsys, "ideas", "add", "-p", "demo", "--title", "new")
+    assert sorted(calls) == [(8, 2), (8, 3), (8, 4)]
+    assert conn.execute("SELECT COUNT(*) FROM comparisons").fetchone()[0] == 3
+    assert ideas.get(conn, 8)["elo"] > 1000
+    # Dedup refusals and reads cannot spend judge calls.
+    assert cli.main(["ideas", "add", "-p", "demo", "--title", "new", "--db", str(tmp_path / "t.db")]) == 1
+    run(tmp_path, capsys, "ideas", "list", "-p", "demo", "--ranked", "--json")
+    assert len(calls) == 3
+
+
+@pytest.mark.parametrize("existing", [0, 1, 2])
+def test_add_uses_only_available_opponents(conn, tmp_path, capsys, monkeypatch, existing):
+    for i in range(existing):
+        ideas.add(conn, 1, f"old{i}", embedding=None)
+    calls = []
+    monkeypatch.setattr(ranking, "judge", lambda p, a, b, m: calls.append(b["id"]) or (a["id"], "test"))
+    run(tmp_path, capsys, "ideas", "add", "-p", "demo", "--title", "new")
+    assert len(calls) == existing
+
+
+def test_judge_failure_never_fails_add(conn, tmp_path, capsys, monkeypatch):
+    ideas.add(conn, 1, "old", embedding=None)
+    def fail(*args):
+        raise OSError("network\nfailed")
+    monkeypatch.setattr(ranking, "judge", fail)
+    assert cli.main(["ideas", "add", "-p", "demo", "--title", "new", "--db", str(tmp_path / "t.db")]) == 0
+    output = capsys.readouterr()
+    assert "Added idea 2" in output.out
+    assert "Ranking warning (2 vs 1): network failed" in output.err
+    assert conn.execute("SELECT COUNT(*) FROM comparisons").fetchone()[0] == 0
+    assert ideas.get(conn, 2)["elo"] == 1000
+
+
+def test_prefer_uses_user_k_and_stores_reason(conn, tmp_path, capsys):
+    a, b = [ideas.add(conn, 1, name, embedding=None) for name in ("a", "b")]
+    run(tmp_path, capsys, "ideas", "prefer", str(a), str(b), "--why", "fits my budget")
+    assert ideas.get(conn, a)["elo"] == 1000 + ranking.USER_K / 2
+    assert ideas.get(conn, b)["elo"] == 1000 - ranking.USER_K / 2
+    row = dict(conn.execute("SELECT * FROM comparisons").fetchone())
+    assert (row["winner_id"], row["loser_id"], row["judge"], row["model"], row["reason"]) == (
+        a, b, "user", None, "fits my budget")
+    before = ideas.get(conn, a)["elo"]
+    ranking.record(conn, a, b, "model", "still cheaper", "test-model")
+    expected = 1 / (1 + 10 ** (-64 / 400))
+    assert ideas.get(conn, a)["elo"] == pytest.approx(before + ranking.MODEL_K * (1 - expected))
+    assert sum(r[0] for r in conn.execute("SELECT elo FROM ideas")) == pytest.approx(2000)
+
+
+def test_prefer_rejects_invalid_pairs_atomically(conn):
+    a = ideas.add(conn, 1, "a", embedding=None)
+    conn.execute("INSERT INTO projects (name, created_at) VALUES ('other', ?)", (db.now(),))
+    conn.commit()
+    b = ideas.add(conn, 2, "b", embedding=None)
+    for pair, error in (((a, a), ValueError), ((a, b), ValueError), ((a, 99), LookupError)):
+        with pytest.raises(error):
+            ranking.record(conn, *pair)
+    assert conn.execute("SELECT COUNT(*) FROM comparisons").fetchone()[0] == 0
+    assert ideas.get(conn, a)["elo"] == 1000
+
+
+def test_ranked_listing_tier_then_elo(conn, tmp_path, capsys):
+    ids = [ideas.add(conn, 1, f"idea{i}", embedding=None) for i in range(5)]
+    for i, status, elo in zip(ids, ("proposed", "approved", "elaborating", "rejected", "approved"),
+                              (1400, 950, 1100, 1800, 950)):
+        ideas.set_status(conn, i, status)
+        conn.execute("UPDATE ideas SET elo = ? WHERE id = ?", (elo, i))
+        conn.commit()
+    ranking.record(conn, 2, 5, reason="test")
+    rows = json.loads(run(tmp_path, capsys, "ideas", "list", "-p", "demo", "--ranked", "--json"))
+    assert [r["id"] for r in rows] == [3, 2, 5, 1, 4]
+    assert rows[1]["elo"] == 982 and rows[1]["comparisons"] == 1
+    assert "Elo 982, 1 comparisons" in run(tmp_path, capsys, "ideas", "list", "-p", "demo", "--ranked")
+    rows = json.loads(run(tmp_path, capsys, "ideas", "list", "-p", "demo", "--json"))
+    assert [r["id"] for r in rows] == ids
+
+
+def test_rank_swiss_rounds(conn, tmp_path, capsys, monkeypatch):
+    for i in range(6):
+        ideas.add(conn, 1, str(i), embedding=None)
+    ideas.set_status(conn, 6, "rejected")
+    calls = []
+    monkeypatch.setattr(ranking, "judge", lambda p, a, b, m: calls.append((a["id"], b["id"])) or (b["id"], "test"))
+    assert cli.main(["ideas", "rank", "-p", "demo", "--rounds", "2", "--db", str(tmp_path / "t.db")]) == 0
+    output = capsys.readouterr()
+    assert "4 judge calls" in output.err
+    assert "Recorded 4 comparisons" in output.out
+    assert sorted(calls[:2]) == [(1, 2), (3, 4)]
+    assert sorted(calls[2:]) == [(2, 4), (5, 1)]  # Re-sort the changed Elo each round.
+    assert len(calls) == 2 * (5 // 2)
+    assert cli.main(["ideas", "rank", "-p", "demo", "--rounds", "0", "--db", str(tmp_path / "t.db")]) == 1
+
+
+def test_judge_prompt_order_and_retry(conn, monkeypatch):
+    import io
+    import urllib.error
+    conn.execute("UPDATE projects SET description = 'cheap retrieval tests' WHERE id = 1")
+    for note in ("PROJECT SUMMARY old", "PROJECT SUMMARY new", "unrelated latest note"):
+        conn.execute("INSERT INTO notes (project_id, body, created_at) VALUES (1, ?, ?)", (note, db.now()))
+    conn.commit()
+    a, b = [ideas.get(conn, ideas.add(conn, 1, name, "summary", "body", embedding=None)) for name in ("a", "b")]
+    calls, sleeps = [], []
+
+    def post(req, timeout):
+        calls.append(req)
+        if len(calls) == 1:
+            raise urllib.error.HTTPError(req.full_url, 429, "Too Many", {"Retry-After": "4"}, io.BytesIO())
+        return io.BytesIO(json.dumps({"choices": [{"message": {"content": "A\nCheaper test."}}]}).encode())
+
+    monkeypatch.setenv("OPENROUTER_API_KEY", "test-key")
+    monkeypatch.setenv("JARVIS_JUDGE_MODEL", "test-judge")
+    monkeypatch.setattr(ranking.urllib.request, "urlopen", post)
+    monkeypatch.setattr(ranking.time, "sleep", sleeps.append)
+    monkeypatch.setattr(ranking.random, "sample", lambda rows, k: list(reversed(rows)))
+    assert REAL_JUDGE(ranking.context(conn, 1), a, b, ranking.model()) == (b["id"], "Cheaper test.")
+    assert sleeps == [4]
+    req = calls[0]
+    assert req.full_url == "https://openrouter.ai/api/v1/chat/completions" and req.get_method() == "POST"
+    assert req.get_header("Authorization") == "Bearer test-key"
+    data = json.loads(req.data)
+    assert data["model"] == "test-judge"
+    prompt = data["messages"][1]["content"]
+    assert "PROJECT SUMMARY new" in prompt and "PROJECT SUMMARY old" not in prompt and "unrelated" not in prompt
+    assert 'A: {"title": "b"' in prompt and '"status": "proposed"' in prompt
+
+
+@pytest.mark.parametrize("answer", ["A", "C\nreason", "A\nreason\nextra", "A\n "])
+def test_unparseable_judge_is_failure(monkeypatch, answer):
+    import io
+    monkeypatch.setenv("OPENROUTER_API_KEY", "test-key")
+    response = {"choices": [{"message": {"content": answer}}]}
+    monkeypatch.setattr(ranking.urllib.request, "urlopen", lambda *a, **k: io.BytesIO(json.dumps(response).encode()))
+    idea = {"id": 1, "title": "t", "summary": "s", "body": "b", "status": "proposed"}
+    with pytest.raises(ValueError, match="invalid judge response"):
+        REAL_JUDGE("project", idea, {**idea, "id": 2}, ranking.model())

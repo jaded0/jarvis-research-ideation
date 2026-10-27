@@ -21,6 +21,7 @@ CREATE TABLE IF NOT EXISTS ideas (
     body       TEXT NOT NULL DEFAULT '',
     embedding  BLOB,
     embed_model TEXT,
+    elo        REAL NOT NULL DEFAULT 1000,
     status     TEXT NOT NULL DEFAULT 'proposed'
                CHECK (status IN ('proposed', 'approved', 'rejected', 'elaborating')),
     created_at TEXT NOT NULL,
@@ -80,6 +81,20 @@ CREATE TABLE IF NOT EXISTS notes (
     created_at TEXT NOT NULL
 );
 
+-- Append-only pairwise judgments for "most promising to try next"; not evaluation events.
+-- Each comparison updates both ideas' Elo. Listing counts these rows; stats does not read them.
+CREATE TABLE IF NOT EXISTS comparisons (
+    id         INTEGER PRIMARY KEY,
+    project_id INTEGER NOT NULL REFERENCES projects(id),
+    winner_id  INTEGER NOT NULL REFERENCES ideas(id),
+    loser_id   INTEGER NOT NULL REFERENCES ideas(id),
+    judge      TEXT NOT NULL CHECK (judge IN ('model', 'user')),
+    model      TEXT,
+    reason     TEXT NOT NULL DEFAULT '',
+    ts         TEXT NOT NULL,
+    CHECK (winner_id != loser_id)
+);
+
 -- Append-only log used for evaluation; `jarvis stats` reads it. payload is a JSON object.
 --   kind          logged by                  payload                                  read by
 --   idea_added    ideas.add                  idea_id                                  -
@@ -114,7 +129,7 @@ def connect(path: str | None = None) -> sqlite3.Connection:
     conn.execute("PRAGMA foreign_keys = ON")
     conn.executescript(SCHEMA)
     columns = {r["name"] for r in conn.execute("PRAGMA table_info(ideas)")}
-    for name, kind in (("embedding", "BLOB"), ("embed_model", "TEXT")):
+    for name, kind in (("embedding", "BLOB"), ("embed_model", "TEXT"), ("elo", "REAL NOT NULL DEFAULT 1000")):
         if name not in columns:
             conn.execute(f"ALTER TABLE ideas ADD COLUMN {name} {kind}")
     conn.commit()
