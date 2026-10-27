@@ -11,6 +11,7 @@ import urllib.error
 from . import db, ideas, papers
 
 HERE = os.path.dirname(os.path.abspath(__file__))
+ENV_FILE = os.path.join(HERE, "..", "..", ".env")  # repo-root .env (API keys), when run from a checkout
 DEFAULT_MODELS = "openrouter/anthropic/claude-haiku-5.5,openrouter/openai/gpt-5.6-luna"
 
 
@@ -77,6 +78,11 @@ def cmd_ideas_show(conn, args):
         return "\n".join(x for x in out if x)
 
     emit(args, idea, md)
+
+
+def cmd_ideas_edit(conn, args):
+    ideas.edit(conn, args.id, args.title, args.summary, args.body, args.append)
+    emit(args, {"id": args.id}, f"Updated idea {args.id}.")
 
 
 def cmd_ideas_status(conn, args):
@@ -222,13 +228,19 @@ def build_parser() -> argparse.ArgumentParser:
     p = sub(g, "add", cmd_ideas_add, (common, proj))
     p.add_argument("--title", required=True)
     p.add_argument("--summary", default="", help="one or two sentences; this is what dedup sees")
-    p.add_argument("--body", default="")
+    p.add_argument("--body", default="", help="longer description")
     p.add_argument("--paper", action="append", default=[], metavar="ID[=WHY]",
                    help="cached paper id that supports the idea (repeatable)")
     p = sub(g, "list", cmd_ideas_list, (common, proj))
     p.add_argument("--status", choices=ideas.STATUSES)
     p = sub(g, "show", cmd_ideas_show)
     p.add_argument("id", type=int)
+    p = sub(g, "edit", cmd_ideas_edit, help="change an idea; --append adds an elaboration to its description")
+    p.add_argument("id", type=int)
+    p.add_argument("--title")
+    p.add_argument("--summary")
+    p.add_argument("--body", help="replace the description")
+    p.add_argument("--append", help="add a paragraph to the description")
     p = sub(g, "status", cmd_ideas_status)
     p.add_argument("id", type=int)
     p.add_argument("status", choices=ideas.STATUSES)
@@ -256,7 +268,7 @@ def build_parser() -> argparse.ArgumentParser:
     g = groups.add_parser("papers", help="literature search").add_subparsers(required=True)
     p = sub(g, "search", cmd_papers_search)
     p.add_argument("query")
-    p.add_argument("--source", choices=list(papers.SOURCES), default="s2")
+    p.add_argument("--source", choices=list(papers.SOURCES), default="openalex")
     p.add_argument("--limit", type=int, default=10)
     p.add_argument("--refresh", action="store_true", help="ignore a cached identical search")
     p = sub(g, "show", cmd_papers_show)
@@ -277,7 +289,18 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
+def load_env(path: str = ENV_FILE) -> None:
+    """Read KEY=VALUE lines from .env into os.environ, without overriding variables already set."""
+    if not os.path.exists(path):
+        return
+    for line in open(path):
+        key, sep, value = line.strip().removeprefix("export ").partition("=")
+        if sep and key and not key.startswith("#"):
+            os.environ.setdefault(key.strip(), value.strip().strip("\"'"))
+
+
 def main(argv=None) -> int:
+    load_env()
     args = build_parser().parse_args(argv)
     conn = db.connect(args.db)
     try:

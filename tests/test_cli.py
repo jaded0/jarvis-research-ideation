@@ -1,4 +1,5 @@
 import json
+import os
 
 import pytest
 
@@ -112,3 +113,62 @@ def test_repeated_search_uses_cache(conn, monkeypatch):
     assert len(calls) == 1 and hit[0]["id"] == "s2:p1"
     papers.search(conn, "fast weights", "s2", 5, refresh=True)
     assert len(calls) == 2
+
+
+def test_edit_replaces_fields_and_appends_elaboration(conn):
+    i = ideas.add(conn, 1, "Old", "old summary", "First experiment: none yet.")
+    ideas.edit(conn, i, title="New", append="Signal: loss drops.")
+    idea = ideas.get(conn, i)
+    assert idea["title"] == "New" and idea["summary"] == "old summary"
+    assert idea["body"] == "First experiment: none yet.\n\nSignal: loss drops."
+    assert [r["id"] for r in ideas.search(conn, 1, "signal")] == [i]  # FTS sees the edit
+    with pytest.raises(ValueError):
+        ideas.edit(conn, i)
+    with pytest.raises(LookupError):
+        ideas.edit(conn, 99, title="x")
+
+
+def test_cli_edit(tmp_path, capsys):
+    run(tmp_path, capsys, "project", "add", "demo")
+    run(tmp_path, capsys, "ideas", "add", "-p", "demo", "--title", "T")
+    assert "Updated idea 1" in run(tmp_path, capsys, "ideas", "edit", "1", "--append", "risk: none")
+    assert "risk: none" in run(tmp_path, capsys, "ideas", "show", "1")
+
+
+@pytest.mark.parametrize("query", ["meta-learning", "GPT-4 (ablation)", "what's next", '"unbalanced',
+                                   "C++", "AND", "*", "a:b", "   "])
+def test_search_treats_query_as_plain_keywords(conn, query):
+    ideas.search(conn, 1, query)  # must not raise
+
+
+def test_search_matches_any_keyword(conn):
+    i = ideas.add(conn, 1, "Meta-learning the optimizer", "learned update rules")
+    assert [r["id"] for r in ideas.search(conn, 1, "meta-learning hypernetworks")] == [i]
+
+
+def test_arxiv_requires_every_word(monkeypatch):
+    urls = []
+    empty = b'<feed xmlns="http://www.w3.org/2005/Atom"/>'
+    monkeypatch.setattr(papers, "_get", lambda url, *a, **k: urls.append(url) or empty)
+    papers.search_arxiv('fast weights (attention "x', 5)
+    assert "all%3Afast+AND+all%3Aweights+AND+all%3Aattention+AND+all%3Ax&" in urls[0]
+
+
+def test_parse_arxiv_raises_on_error_entry_and_keeps_old_ids():
+    err = b"""<feed xmlns="http://www.w3.org/2005/Atom"><entry><id>http://arxiv.org/api/errors#x</id>
+      <title>Error</title><summary>Invalid query</summary></entry></feed>"""
+    with pytest.raises(ValueError, match="Invalid query"):
+        papers.parse_arxiv(err)
+    old = b"""<feed xmlns="http://www.w3.org/2005/Atom"><entry><id>http://arxiv.org/abs/solv-int/9901001v1</id>
+      <title>T</title></entry></feed>"""
+    assert papers.parse_arxiv(old)[0]["id"] == "arxiv:solv-int/9901001"
+
+
+def test_load_env_does_not_override(tmp_path, monkeypatch):
+    f = tmp_path / ".env"
+    f.write_text("# comment\nJARVIS_T1=from_file\nexport JARVIS_T2='quoted'\nJARVIS_T3=from_file\n")
+    monkeypatch.setenv("JARVIS_T3", "already_set")
+    for k in ("JARVIS_T1", "JARVIS_T2"):
+        monkeypatch.delenv(k, raising=False)
+    cli.load_env(str(f))
+    assert (os.environ["JARVIS_T1"], os.environ["JARVIS_T2"], os.environ["JARVIS_T3"]) == ("from_file", "quoted", "already_set")

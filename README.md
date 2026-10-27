@@ -10,10 +10,11 @@ Class project.
 
 ```bash
 uv sync                          # install (Python ≥ 3.11, no runtime dependencies)
-export JARVIS_PROJECT=demo S2_API_KEY=... OPENALEX_API_KEY=...
+export JARVIS_PROJECT=demo      # API keys can go in .env at the repo root; jarvis loads it
 uv run jarvis project add demo --description "what the research is about"
-uv run jarvis papers search "fast weights memory" --source s2
-uv run jarvis ideas add --title "..." --summary "..." --paper s2:<id>=why
+uv run jarvis papers search "fast weights memory"          # OpenAlex by default; also --source arxiv|s2
+uv run jarvis ideas add --title "..." --summary "..." --body "description" --paper "openalex:W3132041002=why"
+uv run jarvis ideas edit 1 --append "elaboration: first experiment, signal, risk"
 uv run jarvis ideas export -o ideas.md
 uv run pytest
 ```

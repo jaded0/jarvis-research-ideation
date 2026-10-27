@@ -1,4 +1,4 @@
-"""Ideas: add, list, sample for dedup, search, export."""
+"""Ideas: add, edit, list, sample for dedup, search, export."""
 
 import random
 import sqlite3
@@ -64,6 +64,25 @@ def set_status(conn: sqlite3.Connection, idea_id: int, status: str) -> None:
     log_event(conn, "idea_status", row["project_id"], idea_id=idea_id, old=row["status"], new=status)
 
 
+def edit(conn: sqlite3.Connection, idea_id: int, title: str | None = None, summary: str | None = None,
+         body: str | None = None, append: str | None = None) -> None:
+    """Change an idea's fields. `body` replaces the description; `append` adds a paragraph to it (elaborations)."""
+    row = conn.execute("SELECT project_id, body FROM ideas WHERE id = ?", (idea_id,)).fetchone()
+    if row is None:
+        raise LookupError(f"no idea with id {idea_id}")
+    fields = {"title": title, "summary": summary, "body": body}
+    fields = {k: v for k, v in fields.items() if v is not None}
+    if append:
+        base = fields.get("body", row["body"])
+        fields["body"] = f"{base}\n\n{append}" if base else append
+    if not fields:
+        raise ValueError("nothing to change: pass --title, --summary, --body or --append")
+    sets = ", ".join(f"{k} = ?" for k in fields)
+    conn.execute(f"UPDATE ideas SET {sets}, updated_at = ? WHERE id = ?", (*fields.values(), now(), idea_id))
+    conn.commit()
+    log_event(conn, "idea_edited", row["project_id"], idea_id=idea_id, fields=sorted(fields))
+
+
 def sample(conn: sqlite3.Connection, project_id: int, n: int = 40, max_chars: int = 12000,
            seed: int | None = None) -> list[dict]:
     """Random sample of the idea pool for dedup checks.
@@ -85,11 +104,19 @@ def sample(conn: sqlite3.Connection, project_id: int, n: int = 40, max_chars: in
     return out
 
 
+def fts_query(query: str) -> str:
+    """Plain keywords -> an FTS5 query: each word quoted (so '-', ':', quotes, AND etc. are literal), any may match."""
+    return " OR ".join('"' + w.replace('"', '""') + '"' for w in query.split())
+
+
 def search(conn: sqlite3.Connection, project_id: int, query: str, limit: int = 10) -> list[dict]:
+    """Keyword search over title, summary and body. Any word may match; best matches (bm25) first."""
+    if not query.split():
+        return []
     return [dict(r) for r in conn.execute(
         "SELECT i.id, i.title, i.summary, i.status FROM ideas_fts f JOIN ideas i ON i.id = f.rowid "
         "WHERE ideas_fts MATCH ? AND i.project_id = ? ORDER BY rank LIMIT ?",
-        (query, project_id, limit))]
+        (fts_query(query), project_id, limit))]
 
 
 def export_markdown(conn: sqlite3.Connection, project_id: int, status: str | None = None) -> str:

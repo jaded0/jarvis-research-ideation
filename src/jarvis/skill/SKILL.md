@@ -1,6 +1,6 @@
 ---
 name: jarvis
-description: Research ideation tools. Use to search the literature (Semantic Scholar, OpenAlex, arXiv), store and dedup research ideas, link ideas to supporting papers, and log evaluation events. Use whenever helping a researcher decide what to try next.
+description: Research ideation tools. Use to search the literature (OpenAlex, arXiv, Semantic Scholar), store and dedup research ideas, link ideas to supporting papers, and log evaluation events. Use whenever helping a researcher decide what to try next.
 ---
 
 # jarvis CLI
@@ -13,15 +13,16 @@ All state lives in one SQLite file (`$JARVIS_DB`, default `./jarvis.db`). Every 
 jarvis project add NAME --description "..."   # once per research project
 jarvis project list
 
-jarvis papers search "QUERY" [--source s2|openalex|arxiv] [--limit 10]
-jarvis papers show s2:PAPER_ID                 # full abstract of a cached paper
+jarvis papers search "QUERY" [--source openalex|arxiv|s2] [--limit 10]   # default openalex
+jarvis papers show PAPER_ID                     # full abstract of a cached paper
 
-jarvis ideas add --title "..." --summary "one or two sentences" [--body "..."] [--paper s2:ID=why]
+jarvis ideas add --title "..." --summary "one or two sentences" [--body "description"] [--paper ID=why]
+jarvis ideas edit ID [--title ...] [--summary ...] [--body "replace description"] [--append "add to description"]
 jarvis ideas list [--status proposed|approved|rejected|elaborating]
 jarvis ideas show ID
 jarvis ideas status ID approved|rejected|elaborating
-jarvis ideas link ID s2:PAPER_ID --why "..."
-jarvis ideas search "KEYWORDS"                  # keyword search over existing ideas
+jarvis ideas link ID PAPER_ID --why "..."
+jarvis ideas search "KEYWORDS"                  # existing ideas matching any keyword, best first
 jarvis ideas sample [-n 40]                     # random sample of the pool, for dedup
 jarvis ideas export [-o ideas.md]
 

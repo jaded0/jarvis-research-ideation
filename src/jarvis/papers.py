@@ -10,6 +10,7 @@ Sources:
 import fcntl
 import json
 import os
+import re
 import sqlite3
 import time
 import urllib.error
@@ -112,7 +113,9 @@ ATOM = {"a": "http://www.w3.org/2005/Atom"}
 
 def search_arxiv(query: str, limit: int) -> list[dict]:
     url = "https://export.arxiv.org/api/query?" + urllib.parse.urlencode(
-        {"search_query": f"all:{query}", "max_results": limit})
+        # arXiv ORs bare words together ("all:fast weights" matches anything "fast"), so require every word.
+        # Only word characters go through; arXiv's query syntax rejects stray parentheses and quotes.
+        {"search_query": " AND ".join(f"all:{w}" for w in re.findall(r"[\w-]+", query)), "max_results": limit})
     return parse_arxiv(_get(url))
 
 
@@ -120,7 +123,9 @@ def parse_arxiv(xml: bytes) -> list[dict]:
     out = []
     for entry in ET.fromstring(xml).findall("a:entry", ATOM):
         abs_url = entry.findtext("a:id", "", ATOM).strip()
-        arxiv_id = abs_url.rsplit("/abs/", 1)[-1].split("v")[0] if "/abs/" in abs_url else abs_url
+        if "/api/errors" in abs_url:  # a bad query comes back as a single fake "Error" entry
+            raise ValueError("arXiv: " + " ".join(entry.findtext("a:summary", "", ATOM).split()))
+        arxiv_id = re.sub(r"v\d+$", "", abs_url.rsplit("/abs/", 1)[-1]) if "/abs/" in abs_url else abs_url
         published = entry.findtext("a:published", "", ATOM)
         out.append({
             "id": f"arxiv:{arxiv_id}",
@@ -142,7 +147,7 @@ SOURCES = {"s2": search_s2, "openalex": search_openalex, "arxiv": search_arxiv}
 SEARCH_TTL_DAYS = 7
 
 
-def search(conn: sqlite3.Connection, query: str, source: str = "s2", limit: int = 10,
+def search(conn: sqlite3.Connection, query: str, source: str = "openalex", limit: int = 10,
            refresh: bool = False) -> list[dict]:
     """Search a source, reusing an identical search from the last SEARCH_TTL_DAYS instead of re-asking the API."""
     key = (" ".join(query.lower().split()), source, limit)
