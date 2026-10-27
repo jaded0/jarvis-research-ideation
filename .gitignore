@@ -11,4 +11,4 @@ __pycache__/
 .env
 
 # Built slides
-slides/slides.pdf
+# slides/slides.pdf is committed so it can be read on GitHub; docs/slides.pdf is the Pages copy

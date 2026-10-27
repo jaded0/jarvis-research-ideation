@@ -63,6 +63,8 @@ Where to change things:
 
 ## Slides
 
+**PDF:** [slides/slides.pdf](slides/slides.pdf) · [GitHub Pages](https://jaded0.github.io/jarvis-research-ideation/slides.pdf) · [Releases](https://github.com/jaded0/jarvis-research-ideation/releases/latest)
+
 The slides are in `slides/slides.md`, written as [Marp](https://marp.app) markdown: `---` separates slides, and images go in `slides/img/` as `![](img/foo.png)`. You need Node (for `npx`) and Chrome or Chromium.
 
 ```bash
