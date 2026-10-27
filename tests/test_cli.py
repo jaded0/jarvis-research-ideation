@@ -89,6 +89,11 @@ def test_pi_command_uses_persona_and_only_our_skill():
     assert cmd[cmd.index("--append-system-prompt") + 1].endswith("persona.md")
     assert "--no-skills" in cmd and "edit" not in cmd[cmd.index("--tools") + 1]
     assert "--thinking" in cmd and "--" not in cmd
+    assert "ask" in cmd[cmd.index("--tools") + 1].split(",")
+    assert os.path.exists(cmd[cmd.index("--extension") + 1])
+    assert cmd[-1] == "Begin the session."
+    resumed = cli.pi_command(cli.build_parser().parse_args(["chat", "-p", "x", "--", "-c"]))
+    assert resumed[-1] == "-c"
 
 
 def test_s2_throttle_spaces_calls(tmp_path, monkeypatch):

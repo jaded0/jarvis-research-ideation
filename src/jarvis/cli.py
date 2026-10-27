@@ -192,15 +192,18 @@ def cmd_stats(conn, args):
 
 def pi_command(args) -> list[str]:
     models = os.environ.get("JARVIS_MODELS", DEFAULT_MODELS)
+    extra = [a for a in args.pi_args if a != "--"]
+    resuming = any(a in ("-c", "--continue", "-r", "--resume", "--session") for a in extra)  # no opener mid-conversation
     return [
         "pi",
         "--model", models.split(",")[0],
         "--models", models,  # Ctrl+P cycles through these
         "--append-system-prompt", os.path.join(HERE, "persona.md"),
         "--no-skills", "--skill", os.path.join(HERE, "skill"),  # only our skill, to keep context small
-        "--tools", "read,bash,grep,find,ls",  # no edit/write: JARVIS suggests, it doesn't change files
-        *[a for a in args.pi_args if a != "--"],
-        "Begin the session.",
+        "--extension", os.path.join(HERE, "ask.ts"),  # the `ask` tool: answer menus as cards, not typed codes
+        "--tools", "read,bash,grep,find,ls,ask",  # no edit/write: JARVIS suggests, it doesn't change files
+        *extra,
+        *([] if resuming else ["Begin the session."]),
     ]
 
 

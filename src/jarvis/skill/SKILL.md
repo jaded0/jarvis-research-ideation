@@ -41,5 +41,5 @@ jarvis stats
    - Run `jarvis ideas sample` and compare the candidate against the sampled ideas.
    - If it duplicates one, don't add it. Run `jarvis event dedup --data '{"verdict": "duplicate", "match": ID, "candidate": "TITLE"}'`.
    - Otherwise run `jarvis event dedup --data '{"verdict": "unique", "candidate": "TITLE"}'`, then `jarvis ideas add`.
-3. **Log every time you ask the user something:** `jarvis event ask_user --data '{"reason": "..."}'`. This is how persistence is measured.
+3. **Log every time you ask the user something** (each `ask` call counts): `jarvis event ask_user --data '{"reason": "..."}'`. This is how persistence is measured.
 4. **Go easy on the APIs.** Our Semantic Scholar key allows 1 request/s and can be revoked. Before searching, check whether a paper you already found covers it (ideas link their papers; `jarvis papers show ID` works on any id you've seen). Use a few well-chosen queries (about 3 per idea), not many variations. Never loop searches in bash, and never retry a failed search more than once. Identical searches are served from cache automatically.

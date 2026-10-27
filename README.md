@@ -22,6 +22,7 @@ uv run pytest
 To talk to J.A.R.V.I.S., `cd` into *your research project* and run `jarvis chat` (install once with `uv tool install -e ~/jarvis`, or use `uv run --project ~/jarvis jarvis chat`). This launches [pi](https://github.com/badlogic/pi-mono) with:
 - the persona in `src/jarvis/persona.md`, appended to pi's system prompt
 - only the jarvis skill (`src/jarvis/skill/`)
+- the `ask` tool (`src/jarvis/ask.ts`, a pi extension): choices are shown as cards, one at a time, answered with a letter, the arrow keys or a click, with a note per card and a summary page to submit from
 - no edit/write tools, so it doesn't change your files. It still has bash, so this is a convention, not a sandbox
 - Haiku 5.5 through OpenRouter, with Ctrl+P switching to Luna. Override with `JARVIS_MODELS=provider/model,...`, and pass extra pi flags after `--`.
 
@@ -67,6 +68,7 @@ On every push to `main`, GitHub Actions (`.github/workflows/ci.yml`) runs the te
 - `src/jarvis/ideas.py`: the idea pool, including `sample` for naive dedup (a random n, capped by characters).
 - `src/jarvis/papers.py`: Semantic Scholar / OpenAlex / arXiv search; results are cached in `papers`.
 - `src/jarvis/cli.py`: the `jarvis` command; `stats` reports value, variety and persistence from `events`; `chat` launches pi.
+- `src/jarvis/ask.ts`: the pi extension behind the `ask` tool (card-by-card choices; mouse works in pi's fullscreen mode).
 - `src/jarvis/persona.md`: the J.A.R.V.I.S. persona (session flow, idea format, behaviour).
 - `src/jarvis/skill/SKILL.md`: the agent's CLI reference and protocols (dedup, event logging, API etiquette). The persona says *how to behave*, the skill says *which commands to run*; each rule lives in one of them.
 

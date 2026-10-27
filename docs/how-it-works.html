@@ -51,11 +51,12 @@
 <nav class="code-nav" aria-label="Code topic"><button data-topic="launch">Launch</button><button data-topic="dispatch">Dispatch</button><button data-topic="recall">Recall</button><button data-topic="research">Research</button><button data-topic="dedup">Dedup</button><button data-topic="decide">Decide</button><button data-topic="storage">Storage</button><button data-topic="evaluation">Evaluation</button></nav>
 <p class="code-summary" id="code-summary"></p>
 <div class="codepage" data-page="launch">
-<article class="codecard"><header><a data-ref="src/jarvis/cli.py:pi_command" href="https://github.com/jaded0/jarvis-research-ideation/blob/main/src/jarvis/cli.py">cli.py · pi_command</a><p>Persona is appended; disable other skills; read-only tools plus bash.</p></header><pre data-snippet-for="src/jarvis/cli.py:pi_command">        "--append-system-prompt", os.path.join(HERE, "persona.md"),
+<article class="codecard"><header><a data-ref="src/jarvis/cli.py:pi_command" href="https://github.com/jaded0/jarvis-research-ideation/blob/main/src/jarvis/cli.py">cli.py · pi_command</a><p>Persona is appended; disable other skills; read-only tools plus bash, and the card-based <code>ask</code> tool.</p></header><pre data-snippet-for="src/jarvis/cli.py:pi_command">        "--append-system-prompt", os.path.join(HERE, "persona.md"),
         "--no-skills", "--skill", os.path.join(HERE, "skill"),  # only our skill, to keep context small
-        "--tools", "read,bash,grep,find,ls",  # no edit/write: JARVIS suggests, it doesn't change files
-        *[a for a in args.pi_args if a != "--"],
-        "Begin the session.",</pre></article>
+        "--extension", os.path.join(HERE, "ask.ts"),  # the `ask` tool: answer menus as cards, not typed codes
+        "--tools", "read,bash,grep,find,ls,ask",  # no edit/write: JARVIS suggests, it doesn't change files
+        *extra,
+        *([] if resuming else ["Begin the session."]),</pre></article>
 <article class="codecard"><header><a data-ref="src/jarvis/cli.py:cmd_chat" href="https://github.com/jaded0/jarvis-research-ideation/blob/main/src/jarvis/cli.py">cli.py · cmd_chat</a><p>Inherit project / DB selection and a PATH that can find this CLI.</p></header><pre data-snippet-for="src/jarvis/cli.py:cmd_chat">    env = dict(os.environ, JARVIS_PROJECT=args.project, JARVIS_DB=os.path.abspath(args.db or db.default_path()))
     # Put this interpreter's bin dir first so the agent can call `jarvis` directly.
     env["PATH"] = os.path.dirname(sys.executable) + os.pathsep + env.get("PATH", "")
