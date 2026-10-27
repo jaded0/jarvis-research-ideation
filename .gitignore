@@ -9,3 +9,6 @@ __pycache__/
 *.egg-info/
 .pytest_cache/
 .env
+
+# Built slides
+slides/slides.pdf

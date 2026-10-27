@@ -46,6 +46,8 @@ Literature data comes from [Semantic Scholar](https://www.semanticscholar.org) (
   - Page 2: UI sketches (project description → idea list → approve/reject/elaborate).
   - Page 3: MVP scope. This is the current direction.
 - [`references/`](references/): related work on AI scientists and idea generation.
+- [`docs/presentation.md`](docs/presentation.md): progress presentation (due 2026-10-27, 2 pm), with requirements and a checklist.
+- [`slides/`](slides/): presentation slides in markdown. `make -C slides` builds `slides.pdf` (pandoc + beamer).
 
 ## MVP direction (from page 3)
 
