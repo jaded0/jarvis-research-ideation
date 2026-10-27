@@ -23,16 +23,24 @@ from .db import now
 USER_AGENT = "jarvis-research-ideation/0.1 (+https://github.com/jaded0/jarvis-research-ideation)"
 
 
-def _get(url: str, headers: dict | None = None, retries: int = 3) -> bytes:
-    """GET with naive backoff on 429/5xx."""
+RETRY_CODES = (429, 500, 502, 503, 504)
+
+
+def _get(url: str, headers: dict | None = None, retries: int = 3, before=None) -> bytes:
+    """GET with naive backoff on 429/5xx. `before()` runs ahead of every attempt, retries included (S2 throttle)."""
     req = urllib.request.Request(url, headers={"User-Agent": USER_AGENT, **(headers or {})})
     for attempt in range(retries):
+        if before:
+            before()
         try:
             with urllib.request.urlopen(req, timeout=30) as resp:
                 return resp.read()
         except urllib.error.HTTPError as e:
-            if e.code in (429, 500, 502, 503) and attempt < retries - 1:
-                time.sleep(3 * 2 ** attempt)  # arXiv asks for >= 3 s between calls
+            if e.code in RETRY_CODES and attempt < retries - 1:
+                # Retry backoff: 3 s, 6 s, or longer if the server says so in Retry-After (capped at 60 s).
+                retry_after = e.headers.get("Retry-After", "") if e.headers else ""
+                wait = float(retry_after) if retry_after.isdigit() else 0.0
+                time.sleep(min(60.0, max(wait, 3 * 2 ** attempt)))
                 continue
             raise
 
@@ -56,12 +64,10 @@ def _s2_throttle() -> None:
 
 
 def search_s2(query: str, limit: int) -> list[dict]:
-    _s2_throttle()
-    fields = S2_FIELDS
     url = "https://api.semanticscholar.org/graph/v1/paper/search?" + urllib.parse.urlencode(
-        {"query": query, "limit": limit, "fields": fields})
+        {"query": query, "limit": limit, "fields": S2_FIELDS})
     key = os.environ.get("S2_API_KEY")
-    data = json.loads(_get(url, {"x-api-key": key} if key else None))
+    data = json.loads(_get(url, {"x-api-key": key} if key else None, before=_s2_throttle))
     return [parse_s2(p) for p in data.get("data", [])]
 
 
@@ -71,6 +77,7 @@ def parse_s2(p: dict) -> dict:
         "source": "s2",
         "title": p.get("title") or "",
         "year": p.get("year"),
+        # Empty for searches: `authors` isn't in S2_FIELDS because our key application didn't list it.
         "authors": ", ".join(a.get("name", "") for a in p.get("authors") or []),
         "abstract": p.get("abstract") or "",
         "tldr": (p.get("tldr") or {}).get("text") or "",

@@ -105,7 +105,8 @@ def connect(path: str | None = None) -> sqlite3.Connection:
     return conn
 
 
-def log_event(conn: sqlite3.Connection, kind: str, project_id: int | None = None, **payload) -> None:
+def log_event(conn: sqlite3.Connection, kind: str, project_id: int | None = None, /, **payload) -> None:
+    """Append to the events log. Positional-only, so a payload may itself contain "kind" or "project_id"."""
     conn.execute(
         "INSERT INTO events (ts, kind, project_id, payload) VALUES (?, ?, ?, ?)",
         (now(), kind, project_id, json.dumps(payload)),

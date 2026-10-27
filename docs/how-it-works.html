@@ -71,7 +71,11 @@
 <article class="codecard"><header><a data-ref="src/jarvis/cli.py:main" href="https://github.com/jaded0/jarvis-research-ideation/blob/main/src/jarvis/cli.py">cli.py · main</a><p>Each command loads config, parses arguments, opens DB, then dispatches.</p></header><pre data-snippet-for="src/jarvis/cli.py:main">def main(argv=None) -&gt; int:
     load_env()
     args = build_parser().parse_args(argv)
-    conn = db.connect(args.db)
+    try:
+        conn = db.connect(args.db)
+    except (sqlite3.OperationalError, OSError) as e:
+        print(f"error: can't open database {args.db or db.default_path()!r}: {e}", file=sys.stderr)
+        return 1
     try:
         args.fn(conn, args)</pre></article>
 <article class="codecard"><header><a data-ref="src/jarvis/cli.py:build_parser.sub" href="https://github.com/jaded0/jarvis-research-ideation/blob/main/src/jarvis/cli.py">cli.py · build_parser → sub</a><p>set_defaults attaches the handler function to the parsed arguments.</p></header><pre data-snippet-for="src/jarvis/cli.py:build_parser.sub">    def sub(group, name, fn, parents=(common,), **kw):
@@ -101,6 +105,8 @@
         args.append(status)
     return [dict(r) for r in conn.execute(sql + " ORDER BY id", args)]</pre></article>
 <article class="codecard"><header><a data-ref="src/jarvis/cli.py:cmd_notes_add" href="https://github.com/jaded0/jarvis-research-ideation/blob/main/src/jarvis/cli.py">cli.py · cmd_notes_add</a><p>Store the project summary, written by the agent after selective reading.</p></header><pre data-snippet-for="src/jarvis/cli.py:cmd_notes_add">def cmd_notes_add(conn, args):
+    if args.idea is not None:
+        ideas.get(conn, args.idea)  # raises &quot;no idea with id N&quot; instead of a foreign-key error
     cur = conn.execute("INSERT INTO notes (project_id, idea_id, body, created_at) VALUES (?, ?, ?, ?)",
                        (db.project_id(conn, args.project), args.idea, args.body, db.now()))
     conn.commit()</pre></article>
@@ -196,7 +202,13 @@ END;</pre></article>
 <div class="codepage" data-page="evaluation" hidden>
 <article class="codecard"><header><a data-ref="src/jarvis/cli.py:cmd_event" href="https://github.com/jaded0/jarvis-research-ideation/blob/main/src/jarvis/cli.py">cli.py · cmd_event</a><p>Agent-reported dedup verdicts and ask_user events enter here.</p></header><pre data-snippet-for="src/jarvis/cli.py:cmd_event">def cmd_event(conn, args):
     pid = db.project_id(conn, args.project) if args.project else None
-    db.log_event(conn, args.kind, pid, **json.loads(args.data))
+    try:
+        data = json.loads(args.data)
+    except json.JSONDecodeError as e:
+        raise ValueError(f"--data is not valid JSON: {e}") from None
+    if not isinstance(data, dict):
+        raise ValueError('--data must be a JSON object, e.g. \'{"verdict": "unique"}\'')
+    db.log_event(conn, args.kind, pid, **data)
     emit(args, {"kind": args.kind}, f"Logged {args.kind}.")</pre></article>
 <article class="codecard"><header><a data-ref="src/jarvis/db.py:log_event" href="https://github.com/jaded0/jarvis-research-ideation/blob/main/src/jarvis/db.py">db.py · log_event</a><p>Append a timestamp, kind, optional project and JSON payload.</p></header><pre data-snippet-for="src/jarvis/db.py:log_event">    conn.execute(
         "INSERT INTO events (ts, kind, project_id, payload) VALUES (?, ?, ?, ?)",

@@ -1,12 +1,12 @@
 """Command-line entry point. Output is short markdown by default; pass --json for machine output."""
 
 import argparse
+import http.client
 import json
 import os
 import shutil
 import sqlite3
 import sys
-import urllib.error
 
 from . import db, ideas, papers
 
@@ -59,7 +59,7 @@ def cmd_project_list(conn, args):
 
 
 def cmd_ideas_add(conn, args):
-    links = [tuple(p.split("=", 1)) if "=" in p else (p, "") for p in args.paper]
+    links = [tuple(x.strip() for x in p.split("=", 1)) if "=" in p else (p.strip(), "") for p in args.paper]
     idea_id = ideas.add(conn, db.project_id(conn, args.project), args.title, args.summary, args.body, links)
     emit(args, {"id": idea_id}, f"Added idea {idea_id}.")
 
@@ -116,6 +116,8 @@ def cmd_ideas_export(conn, args):
 
 
 def cmd_notes_add(conn, args):
+    if args.idea is not None:
+        ideas.get(conn, args.idea)  # raises "no idea with id N" instead of a foreign-key error
     cur = conn.execute("INSERT INTO notes (project_id, idea_id, body, created_at) VALUES (?, ?, ?, ?)",
                        (db.project_id(conn, args.project), args.idea, args.body, db.now()))
     conn.commit()
@@ -145,7 +147,13 @@ def cmd_papers_show(conn, args):
 
 def cmd_event(conn, args):
     pid = db.project_id(conn, args.project) if args.project else None
-    db.log_event(conn, args.kind, pid, **json.loads(args.data))
+    try:
+        data = json.loads(args.data)
+    except json.JSONDecodeError as e:
+        raise ValueError(f"--data is not valid JSON: {e}") from None
+    if not isinstance(data, dict):
+        raise ValueError('--data must be a JSON object, e.g. \'{"verdict": "unique"}\'')
+    db.log_event(conn, args.kind, pid, **data)
     emit(args, {"kind": args.kind}, f"Logged {args.kind}.")
 
 
@@ -302,10 +310,16 @@ def load_env(path: str = ENV_FILE) -> None:
 def main(argv=None) -> int:
     load_env()
     args = build_parser().parse_args(argv)
-    conn = db.connect(args.db)
+    try:
+        conn = db.connect(args.db)
+    except (sqlite3.OperationalError, OSError) as e:
+        print(f"error: can't open database {args.db or db.default_path()!r}: {e}", file=sys.stderr)
+        return 1
     try:
         args.fn(conn, args)
-    except (LookupError, ValueError, sqlite3.IntegrityError, urllib.error.URLError) as e:
+    # Expected failures print one line. OSError covers network errors and timeouts (URLError is one) and bad paths.
+    except (LookupError, ValueError, sqlite3.IntegrityError, sqlite3.OperationalError, OSError,
+            http.client.HTTPException) as e:
         print(f"error: {e}", file=sys.stderr)
         return 1
     finally:

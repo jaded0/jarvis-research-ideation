@@ -172,3 +172,63 @@ def test_load_env_does_not_override(tmp_path, monkeypatch):
         monkeypatch.delenv(k, raising=False)
     cli.load_env(str(f))
     assert (os.environ["JARVIS_T1"], os.environ["JARVIS_T2"], os.environ["JARVIS_T3"]) == ("from_file", "quoted", "already_set")
+
+
+def test_s2_throttle_runs_before_every_retry(monkeypatch):
+    import io
+    import urllib.error
+    calls, sleeps = [], []
+
+    def fake_urlopen(req, timeout):
+        calls.append("request")
+        if calls.count("request") < 3:
+            raise urllib.error.HTTPError(req.full_url, 429, "Too Many", {}, io.BytesIO())
+        return io.BytesIO(b'{"data": []}')
+
+    monkeypatch.setattr(papers.urllib.request, "urlopen", fake_urlopen)
+    monkeypatch.setattr(papers.time, "sleep", sleeps.append)
+    monkeypatch.setattr(papers, "_s2_throttle", lambda: calls.append("throttle"))
+    assert papers.search_s2("q", 1) == []
+    assert calls == ["throttle", "request"] * 3 and sleeps == [3, 6]
+
+
+@pytest.mark.parametrize("data", ["[1, 2]", '{"kind": "x", "project_id": 5}', "not json"])
+def test_event_payloads(tmp_path, capsys, data):
+    run(tmp_path, capsys, "project", "add", "demo")
+    code = cli.main(["event", "dedup", "-p", "demo", "--data", data, "--db", str(tmp_path / "t.db")])
+    assert code == (0 if data.startswith("{") else 1)  # bad payloads are a one-line error, not a traceback
+
+
+def test_expected_failures_are_one_line_errors(tmp_path, capsys):
+    run(tmp_path, capsys, "project", "add", "demo")
+    db_arg = ["--db", str(tmp_path / "t.db")]
+    assert cli.main(["notes", "add", "x", "--idea", "99", "-p", "demo", *db_arg]) == 1
+    assert "no idea with id 99" in capsys.readouterr().err
+    assert cli.main(["ideas", "export", "-p", "demo", "-o", str(tmp_path / "nodir" / "x.md"), *db_arg]) == 1
+    assert cli.main(["project", "list", "--db", str(tmp_path / "nodir" / "x.db")]) == 1
+
+
+def test_paper_link_strips_spaces(tmp_path, capsys):
+    run(tmp_path, capsys, "project", "add", "demo")
+    conn = db.connect(str(tmp_path / "t.db"))
+    papers.cache(conn, papers.parse_s2({"paperId": "abc", "title": "T"}))
+    conn.commit()
+    conn.close()
+    run(tmp_path, capsys, "ideas", "add", "-p", "demo", "--title", "T", "--paper", "s2:abc = motivates")
+    assert "s2:abc | T: motivates" in run(tmp_path, capsys, "ideas", "show", "1")
+
+
+def test_every_skill_command_parses(monkeypatch):
+    """SKILL.md is the agent's CLI reference; renaming a flag without updating it breaks the agent at runtime."""
+    import re
+    import shlex
+    monkeypatch.setenv("JARVIS_PROJECT", "x")
+    parser = cli.build_parser()
+    skill = open(os.path.join(cli.HERE, "skill", "SKILL.md")).read()
+    lines = [ln.split("#")[0].strip() for ln in skill.splitlines() if ln.startswith("jarvis ")]
+    assert len(lines) > 10
+    for line in lines:
+        line = re.sub(r"\[([^\]]*)\]", lambda m: m.group(1).split("|")[0], line)  # [--x a|b] -> --x a
+        line = re.sub(r"(\w+)\|[\w|]+", r"\1", line)                             # a|b|c -> a
+        line = line.replace("ID", "1").replace("NAME", "x").replace("KIND", "dedup")
+        parser.parse_args(shlex.split(line)[1:])  # SystemExit fails the test

@@ -5,7 +5,7 @@ description: Research ideation tools. Use to search the literature (OpenAlex, ar
 
 # jarvis CLI
 
-All state lives in one SQLite file (`$JARVIS_DB`, default `./jarvis.db`). Every command prints short markdown; add `--json` only when you need exact fields. Set `JARVIS_PROJECT` or pass `-p NAME`. If `jarvis` isn't on PATH, run it as `uv run -q jarvis` from the repo.
+All state lives in one SQLite file (`$JARVIS_DB`, default `./jarvis.db`). Every command prints short markdown; add `--json` after the subcommand (`jarvis ideas list --json`) only when you need exact fields. The project comes from `$JARVIS_PROJECT`, which `jarvis chat` sets, so don't pass `-p`. If `jarvis` isn't on PATH, run it as `uv run -q jarvis` from the repo.
 
 ## Commands
 
@@ -41,5 +41,5 @@ jarvis stats
    - Otherwise run `jarvis event dedup --data '{"verdict": "unique", "candidate": "TITLE"}'`, then `jarvis ideas add`.
 3. **Present a few ideas at a time** (about five). Let the researcher approve, reject or ask you to elaborate on each, and record the answer with `jarvis ideas status`.
 4. **Log every time you ask the user something:** `jarvis event ask_user --data '{"reason": "..."}'`. This is how persistence is measured.
-5. **Go easy on the APIs.** Our Semantic Scholar key allows 1 request/s and can be revoked. Before searching, check whether a cached paper already covers it (`jarvis papers show`). Use a few well-chosen queries (about 3 per idea), not many variations. Never loop searches in bash, and never retry a failed search more than once. Identical searches are served from cache automatically.
+5. **Go easy on the APIs.** Our Semantic Scholar key allows 1 request/s and can be revoked. Before searching, check whether a paper you already found covers it (ideas link their papers; `jarvis papers show ID` works on any id you've seen). Use a few well-chosen queries (about 3 per idea), not many variations. Never loop searches in bash, and never retry a failed search more than once. Identical searches are served from cache automatically.
 6. **Keep context small.** Prefer TLDRs and list views. Only `show` a paper or idea when you need its details.
