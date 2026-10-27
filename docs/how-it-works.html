@@ -1,0 +1,287 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<title>J.A.R.V.I.S. · How it works</title>
+<style>
+:root{--bg:#edf1f6;--sheet:#fff;--ink:#192a40;--muted:#53657c;--line:#cbd5e2;--human:#a24b16;--agent:#6740b4;--cli:#126b92;--data:#17735a;--paper:#9a6011;--wash:#f4f7fb}
+@media(prefers-color-scheme:dark){:root{--bg:#0c1421;--sheet:#142033;--ink:#eff4ff;--muted:#acbed7;--line:#3b4e68;--human:#ffb17d;--agent:#c4a6ff;--cli:#7bd5ff;--data:#75ddba;--paper:#ffd084;--wash:#1b2a40}}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:clamp(14px,1.05vw,20px)/1.45 system-ui,sans-serif;min-height:100vh;display:grid;place-items:center}button,a,input{touch-action:manipulation}button{font:inherit;color:inherit;background:var(--wash);border:1px solid var(--line);border-radius:10px;padding:.45em .8em;cursor:pointer}button:hover{border-color:var(--cli)}button:focus-visible,a:focus-visible,input:focus-visible{outline:3px solid var(--cli);outline-offset:3px}button[aria-pressed=true],button[aria-selected=true]{background:var(--ink);color:var(--sheet);border-color:var(--ink)}a{color:var(--cli);text-underline-offset:3px}code,pre{font-family:ui-monospace,SFMono-Regular,Consolas,monospace}code{font-size:.89em}h1,h2,h3,p{margin:0}h1{font-size:2em;letter-spacing:-.045em;line-height:1.1}h2{font-size:1.55em;letter-spacing:-.025em}h3{font-size:1.12em}small{font-size:.78em;color:var(--muted)}
+.app{width:min(1800px,calc((100vh - 32px)*16/9),calc(100vw - 32px));aspect-ratio:16/9;background:var(--sheet);border:1px solid var(--line);border-radius:22px;padding:1.5em;display:flex;flex-direction:column;gap:1em;box-shadow:0 18px 70px #0001}header{display:flex;align-items:center;justify-content:space-between;gap:1em}.eyebrow{font-size:.68em;letter-spacing:.16em;text-transform:uppercase;color:var(--muted);font-weight:750;margin-bottom:.5em}.controls{display:flex;align-items:center;gap:.4em}.controls button{white-space:nowrap;font-size:.8em}#zoom{width:85px;accent-color:var(--cli)}.bar{display:flex;justify-content:space-between;align-items:center;gap:1em;border-bottom:1px solid var(--line);padding-bottom:.7em}.crumb{display:flex;align-items:center;gap:.6em;font-size:.8em}.crumb button{padding:.25em .6em}#caption{font-size:.85em;color:var(--muted)}main{flex:1;min-height:0;position:relative}.level{height:100%;display:flex;flex-direction:column;gap:.85em;animation:arrive .2s ease-out}.level[hidden],.codepage[hidden]{display:none!important}@keyframes arrive{from{opacity:.25;transform:translateY(5px)}to{opacity:1;transform:none}}.intro{max-width:65em;color:var(--muted);font-size:1.05em}.intro strong{color:var(--ink)}.node,.card{border:1px solid var(--line);border-top:4px solid var(--type,var(--cli));background:var(--wash);border-radius:14px;padding:1em;text-align:left;min-width:0}.node{display:flex;flex-direction:column;gap:.5em;transition:transform .18s,border-color .18s}.node:hover{transform:translateY(-3px);border-color:var(--type)}.node b{font-size:1.25em;color:var(--type)}.node span{color:var(--muted);font-size:.9em}.human{--type:var(--human)}.agent{--type:var(--agent)}.cli{--type:var(--cli)}.data{--type:var(--data)}.paper{--type:var(--paper)}.tag{font-size:.63em;font-weight:750;letter-spacing:.12em;text-transform:uppercase;color:var(--type)}.arrow{color:var(--muted);font-size:1.5em;text-align:center;align-self:center}.story{display:grid;grid-template-columns:1fr 40px 1.2fr 40px 1fr;gap:.6em;align-items:stretch;margin-top:1em}.story .node{min-height:8.5em}.story-bottom{display:grid;grid-template-columns:1fr 1fr;gap:1.4em;width:68%;align-self:center}.connector{text-align:center;color:var(--muted);font-size:.85em}.callout{border-left:3px solid var(--agent);padding:.5em 1em;color:var(--muted);font-size:.85em;margin-top:auto}.system{display:grid;grid-template-columns:1fr 1.6fr 1.15fr;gap:1em;flex:1;min-height:0}.stack{display:flex;flex-direction:column;gap:.6em}.stack .node{flex:1}.edge{font-size:.8em;color:var(--muted);text-align:center;padding:.1em}.system .node b{font-size:1.1em}.system .node span{font-size:.85em}.flows{display:grid;grid-template-columns:1.22fr 1fr 1fr;gap:.8em;flex:1;min-height:0}.flows .card{padding:.8em;display:flex;flex-direction:column;gap:.55em}.flows h3{color:var(--type)}.steps{display:flex;flex-direction:column;gap:.45em;font-size:.8em}.step{border:1px solid var(--line);border-radius:8px;padding:.4em .65em;background:var(--sheet)}.step button{border:0;background:none;padding:0;text-align:left;width:100%;font-size:inherit;color:inherit}.step button:hover{color:var(--cli)}.step b{color:var(--type)}.down{font-size:.75em;color:var(--muted);text-align:center;line-height:1}.mini{font-size:.74em;color:var(--muted)}.schema{font-size:.79em;line-height:1.9;background:var(--sheet);border:1px solid var(--line);border-radius:8px;padding:.5em .7em}.schema strong{color:var(--data)}.code-nav{display:flex;gap:.4em;flex-wrap:wrap}.code-nav button{font-size:.72em;padding:.3em .7em}.codepage{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:.8em;flex:1;min-height:0;align-content:start}.codecard{border:1px solid var(--line);border-radius:12px;overflow:hidden;min-width:0;background:var(--wash)}.codecard header{padding:.55em .8em;display:block;border-bottom:1px solid var(--line);font-size:.85em}.codecard header p{font-size:.82em;color:var(--muted);margin-top:.25em}.codecard pre{margin:0;padding:.8em;font-size:.68em;line-height:1.5;overflow:auto;tab-size:4;color:var(--ink)}.codecard a{font-weight:700}.code-summary{font-size:.8em;color:var(--muted)}footer{display:flex;align-items:center;justify-content:space-between;gap:1em;font-size:.67em;border-top:1px solid var(--line);padding-top:.8em;color:var(--muted)}.legend{display:flex;gap:1em}.legend span:before{content:'';display:inline-block;width:.6em;height:.6em;background:var(--type);border-radius:50%;margin-right:.4em}.focused{outline:3px solid var(--type,var(--cli));outline-offset:3px}.screen-only{display:initial}.shot .screen-only{display:none}.shot .app{box-shadow:none}.shot #caption{max-width:65em}.print-btn{font-size:.75em}
+.codecard pre{white-space:pre-wrap;overflow-wrap:anywhere;font-size:.75em;line-height:1.45}
+@media(max-width:1000px){body{display:block;font-size:16px}.app{width:100%;min-height:100vh;height:auto;aspect-ratio:auto;border-radius:0;padding:20px}.app header{flex-wrap:wrap}.controls{flex-wrap:wrap}.bar{align-items:flex-start;flex-direction:column}.story{grid-template-columns:1fr}.story .node{min-height:0}.story .arrow{transform:rotate(90deg)}.story-bottom{width:100%}.system,.flows,.codepage{grid-template-columns:1fr}.level{height:auto}footer{flex-wrap:wrap}.legend{flex-wrap:wrap}.codecard pre{font-size:12px}.callout{margin-top:1em}}
+@media(prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+@page{size:landscape;margin:8mm}@media print{body{background:white;display:block;font-size:13px}.app{width:100%;aspect-ratio:16/9;box-shadow:none;border:0;break-inside:avoid}.screen-only{display:none!important}.codecard pre{overflow:visible;white-space:pre-wrap;font-size:.68em}a{color:inherit}*{animation:none!important}}
+</style>
+</head>
+<body>
+<div class="app">
+<header><div><div class="eyebrow">J.A.R.V.I.S. / research ideation / current implementation</div><h1>How it works<span style="color:var(--cli)">.</span></h1></div>
+<nav class="controls screen-only" aria-label="Semantic zoom level"><button data-level="1">1 · Story</button><button data-level="2">2 · System</button><button data-level="3">3 · Flow</button><button data-level="4">4 · Code</button><input id="zoom" type="range" min="1" max="4" value="1" aria-label="Zoom level"><button id="screenshot" title="Hide controls; Escape restores them">Screenshot</button><button id="print" title="Print the current level">Print</button></nav></header>
+<div class="bar"><nav class="crumb" aria-label="Zoom breadcrumb"><button id="out" class="screen-only">← Zoom out</button><span id="breadcrumb">Overview / Story</span></nav><p id="caption" aria-live="polite"></p></div>
+<main id="canvas">
+<section class="level" id="level1" aria-label="Level 1: the simple story">
+<p class="intro"><strong>You tell Jarvis what you're working on and where you're stuck.</strong> Jarvis remembers what you've tried, looks up what scientists have written, and suggests a few new things to try that aren't repeats. You pick which ones you like.</p>
+<div class="story"><button class="node human" data-go="2" data-focus="researcher"><span class="tag">01 / The question</span><b>You</b><span>“I'm stuck. What could I try next?”</span></button><div class="arrow" aria-hidden="true">→</div><button class="node agent" data-go="2" data-focus="agent"><span class="tag">02 / Your thinking partner</span><b>Jarvis</b><span>Connects your past work with ideas from research.</span></button><div class="arrow" aria-hidden="true">→</div><button class="node human" data-go="2" data-focus="researcher"><span class="tag">03 / Your choice</span><b>A short idea list</b><span>Keep it, skip it, ask for detail, or ask for evidence.</span></button></div>
+<p class="connector">Jarvis checks both ↓ &nbsp; · &nbsp; your choices steer the next round ↺</p>
+<div class="story-bottom"><button class="node data" data-go="2" data-focus="memory"><span class="tag">Memory</span><b>A notebook</b><span>Earlier ideas, what you liked, and project notes.</span></button><button class="node paper" data-go="2" data-focus="sources"><span class="tag">Evidence</span><b>A science library</b><span>Real papers that help explain why an idea is worth trying.</span></button></div>
+<p class="callout">A brainstorming partner, not an automatic scientist. It suggests experiments; you decide and do the work. Checking a sample can miss a repeat.</p>
+</section>
+<section class="level" id="level2" aria-label="Level 2: system components" hidden>
+<div class="system">
+<div class="stack"><button class="node human" data-focus-id="researcher" data-go="3" data-topic="decide"><span class="tag">Human</span><b>Researcher</b><span>Shares context; approves, rejects, requests elaboration or more evidence.</span></button><div class="edge">↓ starts a session &nbsp; ↑ conversation</div><button class="node cli" data-go="4" data-topic="launch"><span class="tag">Entry point</span><b>jarvis chat</b><span>Creates the project if absent. Sets JARVIS_PROJECT, JARVIS_DB and PATH; replaces itself with pi via execvpe.</span></button></div>
+<div class="stack"><button class="node agent" data-focus-id="agent" data-go="3" data-topic="recall"><span class="tag">Reasoning / pi agent harness</span><b>Persona + one skill</b><span>persona.md is appended to the system prompt. Only the jarvis skill is loaded. Tools: read, grep, find, ls, plus bash.</span><span>Reads local project files selectively. The persona says: no code writing or experiments.</span></button><div class="edge">↓ bash: jarvis … &nbsp; ↑ short markdown / optional JSON<br><strong>Every CLI invocation is a separate process.</strong></div><button class="node cli" data-go="4" data-topic="dispatch"><span class="tag">Execution boundary</span><b>jarvis CLI</b><span>Parses a command → opens SQLite → runs one handler → closes. The agent accesses the database and paper APIs only through these commands.</span></button></div>
+<div class="stack"><div class="edge">CLI ⇄ persistent state</div><button class="node data" data-focus-id="memory" data-go="3" data-topic="storage"><span class="tag">SQLite</span><b>jarvis.db</b><span>Projects, ideas, keyword index, paper/search caches, evidence links, notes and events. Default: ./jarvis.db; JARVIS_DB or --db overrides it.</span></button><div class="edge">CLI → search APIs → cached results</div><button class="node paper" data-focus-id="sources" data-go="3" data-topic="research"><span class="tag">Paper sources</span><b>OpenAlex · arXiv · S2</b><span>OpenAlex is the default. Semantic Scholar (S2): 1 req/s limit; local throttle spaces calls ≥1.05 s. Retries back off on 429 / selected 5xx.</span></button></div>
+</div><p class="callout">The instructions constrain behaviour; bash is not a security sandbox. No Elo ranking, subagents, vector index or web app is implemented here.</p>
+</section>
+<section class="level" id="level3" aria-label="Level 3: processes and data" hidden>
+<div class="flows">
+<article class="card agent"><span class="tag">Session / persona.md</span><h3>A conversation that loops</h3><div class="steps">
+<div class="step"><button data-go="4" data-topic="recall"><b>1 · Recall → understand</b><br><code>notes list</code> + <code>ideas list</code>. If no summary: read selectively → <code>notes add</code>. Ask where they're stuck.</button></div><div class="down">↓</div>
+<div class="step"><button data-go="4" data-topic="research"><b>2 · Research</b><br>Search method, failure and neighbouring fields. Retrieve real evidence.</button></div><div class="down">↓</div>
+<div class="step"><button data-go="4" data-topic="dedup"><b>3 · Propose about five</b><br>Each candidate: fresh <code>ideas sample</code> → agent verdict → <code>event dedup</code> → <code>ideas add</code> only if unique. Duplicate → skip.</button></div><div class="down">↓</div>
+<div class="step"><button data-go="4" data-topic="decide"><b>4 · Researcher chooses</b><br>Approve / reject → <code>ideas status</code><br>Elaborate → <code>ideas status ID elaborating</code> + <code>ideas edit ID --append</code><br>Ground → search + <code>ideas link</code></button></div><div class="down">↺ Repeat research / propose; avoid rejected ideas</div></div><p class="mini">Agent instructions, not a hard-coded workflow engine. Log every question with <code>event ask_user</code>.</p></article>
+<article class="card paper"><span class="tag">Retrieval / papers.py + ideas.py</span><h3>Reuse before requesting</h3><div class="steps"><div class="step"><button data-go="4" data-topic="research"><b>Paper search</b><br>Normalize query + source + limit → look up <code>searches</code> (7-day TTL).</button></div><div class="down">↓ cache hit → load paper IDs from papers</div><div class="step"><button data-go="4" data-topic="research"><b>Miss / --refresh</b><br>Source API → normalize results → <code>papers</code> cache + <code>searches</code> record.</button></div><div class="down">↓ real paper IDs support each stored idea</div><div class="step"><button data-go="4" data-topic="dedup"><b>Idea recall ≠ dedup verdict</b><br>Keyword search: <code>ideas_fts</code>, any keyword, rank first.<br>Dedup: random titles + summaries (default n=40, ~12k character budget); compare afresh for each candidate.</button></div></div><p class="mini">S2: file lock coordinates CLI processes sharing the local cache path; not multiple machines. The agent reports “unique” / “duplicate”; SQLite does not decide novelty.</p></article>
+<article class="card data"><span class="tag">Persistence / db.py</span><h3>One file, linked records</h3><button class="schema" style="text-align:left;color:inherit" data-go="4" data-topic="storage"><strong>projects</strong> → ideas, notes, events<br><strong>ideas</strong> ⇄ ideas_fts (FTS5)<br>insert / update / delete triggers sync index<br><strong>ideas</strong> → idea_papers ← papers<br><strong>notes</strong> → optional idea_id<br><strong>searches</strong> ⇢ papers via JSON ID list<br><small>→ foreign key · ⇢ application-level link<br>papers / searches are shared, not project-scoped</small></button><div class="step"><button data-go="4" data-topic="evaluation"><b>events → jarvis stats</b><br>Value = <code>approved_rate</code> ↑<br>Variety = <code>duplicate_rate</code> ↓<br>Persistence = <code>ask_user</code> count ↓</button></div><p class="mini">Approval rate uses current idea statuses. Duplicate rate uses agent-reported dedup events, not measured ground truth. Lower is better for duplicates and prompts; higher for approval.</p></article>
+</div>
+</section>
+<section class="level" id="level4" aria-label="Level 4: source code" hidden>
+<nav class="code-nav" aria-label="Code topic"><button data-topic="launch">Launch</button><button data-topic="dispatch">Dispatch</button><button data-topic="recall">Recall</button><button data-topic="research">Research</button><button data-topic="dedup">Dedup</button><button data-topic="decide">Decide</button><button data-topic="storage">Storage</button><button data-topic="evaluation">Evaluation</button></nav>
+<p class="code-summary" id="code-summary"></p>
+<div class="codepage" data-page="launch">
+<article class="codecard"><header><a data-ref="src/jarvis/cli.py:pi_command" href="https://github.com/jaded0/jarvis-research-ideation/blob/main/src/jarvis/cli.py">cli.py · pi_command</a><p>Persona is appended; disable other skills; read-only tools plus bash.</p></header><pre data-snippet-for="src/jarvis/cli.py:pi_command">        "--append-system-prompt", os.path.join(HERE, "persona.md"),
+        "--no-skills", "--skill", os.path.join(HERE, "skill"),  # only our skill, to keep context small
+        "--tools", "read,bash,grep,find,ls",  # no edit/write: JARVIS suggests, it doesn't change files
+        *[a for a in args.pi_args if a != "--"],
+        "Begin the session.",</pre></article>
+<article class="codecard"><header><a data-ref="src/jarvis/cli.py:cmd_chat" href="https://github.com/jaded0/jarvis-research-ideation/blob/main/src/jarvis/cli.py">cli.py · cmd_chat</a><p>Inherit project / DB selection and a PATH that can find this CLI.</p></header><pre data-snippet-for="src/jarvis/cli.py:cmd_chat">    env = dict(os.environ, JARVIS_PROJECT=args.project, JARVIS_DB=os.path.abspath(args.db or db.default_path()))
+    # Put this interpreter's bin dir first so the agent can call `jarvis` directly.
+    env["PATH"] = os.path.dirname(sys.executable) + os.pathsep + env.get("PATH", "")
+    os.execvpe("pi", pi_command(args), env)</pre></article>
+<article class="codecard"><header><a data-ref="src/jarvis/cli.py:load_env" href="https://github.com/jaded0/jarvis-research-ideation/blob/main/src/jarvis/cli.py">cli.py · load_env</a><p>Repo-root .env by default; existing environment values win.</p></header><pre data-snippet-for="src/jarvis/cli.py:load_env">    if not os.path.exists(path):
+        return
+    for line in open(path):
+        key, sep, value = line.strip().removeprefix("export ").partition("=")
+        if sep and key and not key.startswith("#"):
+            os.environ.setdefault(key.strip(), value.strip().strip("\"'"))</pre></article>
+</div>
+<div class="codepage" data-page="dispatch" hidden>
+<article class="codecard"><header><a data-ref="src/jarvis/cli.py:main" href="https://github.com/jaded0/jarvis-research-ideation/blob/main/src/jarvis/cli.py">cli.py · main</a><p>Each command loads config, parses arguments, opens DB, then dispatches.</p></header><pre data-snippet-for="src/jarvis/cli.py:main">def main(argv=None) -&gt; int:
+    load_env()
+    args = build_parser().parse_args(argv)
+    conn = db.connect(args.db)
+    try:
+        args.fn(conn, args)</pre></article>
+<article class="codecard"><header><a data-ref="src/jarvis/cli.py:build_parser.sub" href="https://github.com/jaded0/jarvis-research-ideation/blob/main/src/jarvis/cli.py">cli.py · build_parser → sub</a><p>set_defaults attaches the handler function to the parsed arguments.</p></header><pre data-snippet-for="src/jarvis/cli.py:build_parser.sub">    def sub(group, name, fn, parents=(common,), **kw):
+        p = group.add_parser(name, parents=list(parents), **kw)
+        p.set_defaults(fn=fn)
+        return p</pre></article>
+<article class="codecard"><header><a data-ref="src/jarvis/cli.py:build_parser" href="https://github.com/jaded0/jarvis-research-ideation/blob/main/src/jarvis/cli.py">cli.py · build_parser</a><p>A command registration: paper search defaults to OpenAlex.</p></header><pre data-snippet-for="src/jarvis/cli.py:build_parser">    g = groups.add_parser("papers", help="literature search").add_subparsers(required=True)
+    p = sub(g, "search", cmd_papers_search)
+    p.add_argument("query")
+    p.add_argument("--source", choices=list(papers.SOURCES), default="openalex")
+    p.add_argument("--limit", type=int, default=10)
+    p.add_argument("--refresh", action="store_true", help="ignore a cached identical search")</pre></article>
+<article class="codecard"><header><a data-ref="src/jarvis/db.py:connect" href="https://github.com/jaded0/jarvis-research-ideation/blob/main/src/jarvis/db.py">db.py · connect</a><p>Initialize schema on connection; main closes the connection in finally.</p></header><pre data-snippet-for="src/jarvis/db.py:connect">    conn = sqlite3.connect(path or default_path())
+    conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA foreign_keys = ON")
+    conn.executescript(SCHEMA)
+    return conn</pre></article>
+</div>
+<div class="codepage" data-page="recall" hidden>
+<article class="codecard"><header><a data-ref="src/jarvis/cli.py:cmd_notes_list" href="https://github.com/jaded0/jarvis-research-ideation/blob/main/src/jarvis/cli.py">cli.py · cmd_notes_list</a><p>Recall notes from earlier sessions.</p></header><pre data-snippet-for="src/jarvis/cli.py:cmd_notes_list">def cmd_notes_list(conn, args):
+    rows = [dict(r) for r in conn.execute(
+        "SELECT id, idea_id, body, created_at FROM notes WHERE project_id = ? ORDER BY id",
+        (db.project_id(conn, args.project),))]</pre></article>
+<article class="codecard"><header><a data-ref="src/jarvis/ideas.py:list_" href="https://github.com/jaded0/jarvis-research-ideation/blob/main/src/jarvis/ideas.py">ideas.py · list_</a><p>Recall the idea pool; optional status filter.</p></header><pre data-snippet-for="src/jarvis/ideas.py:list_">    sql, args = "SELECT id, title, summary, status FROM ideas WHERE project_id = ?", [project_id]
+    if status:
+        sql += " AND status = ?"
+        args.append(status)
+    return [dict(r) for r in conn.execute(sql + " ORDER BY id", args)]</pre></article>
+<article class="codecard"><header><a data-ref="src/jarvis/cli.py:cmd_notes_add" href="https://github.com/jaded0/jarvis-research-ideation/blob/main/src/jarvis/cli.py">cli.py · cmd_notes_add</a><p>Store the project summary, written by the agent after selective reading.</p></header><pre data-snippet-for="src/jarvis/cli.py:cmd_notes_add">def cmd_notes_add(conn, args):
+    cur = conn.execute("INSERT INTO notes (project_id, idea_id, body, created_at) VALUES (?, ?, ?, ?)",
+                       (db.project_id(conn, args.project), args.idea, args.body, db.now()))
+    conn.commit()</pre></article>
+</div>
+<div class="codepage" data-page="research" hidden>
+<article class="codecard"><header><a data-ref="src/jarvis/papers.py:search" href="https://github.com/jaded0/jarvis-research-ideation/blob/main/src/jarvis/papers.py">papers.py · search</a><p>Cache-then-call: matching query, source and limit, within seven days.</p></header><pre data-snippet-for="src/jarvis/papers.py:search">    row = conn.execute(
+        "SELECT paper_ids FROM searches WHERE query = ? AND source = ? AND lim = ? "
+        "AND ts &gt; datetime('now', ?)", (*key, f"-{SEARCH_TTL_DAYS} days")).fetchone()
+    if row and not refresh:
+        return [get(conn, pid) for pid in json.loads(row["paper_ids"])]
+    results = SOURCES[source](query, limit)
+    for p in results:
+        cache(conn, p)</pre></article>
+<article class="codecard"><header><a data-ref="src/jarvis/papers.py:_s2_throttle" href="https://github.com/jaded0/jarvis-research-ideation/blob/main/src/jarvis/papers.py">papers.py · _s2_throttle</a><p>Local shared timestamp, exclusive file lock; <span data-ref="src/jarvis/papers.py:S2_MIN_INTERVAL">S2_MIN_INTERVAL = 1.05 s</span>.</p></header><pre data-snippet-for="src/jarvis/papers.py:_s2_throttle">    with open(path, "a+") as f:
+        fcntl.flock(f, fcntl.LOCK_EX)  # held until the file closes, so concurrent callers queue up
+        f.seek(0)
+        last = float(f.read() or 0)
+        time.sleep(max(0.0, last + S2_MIN_INTERVAL - time.time()))
+        f.seek(0)
+        f.truncate()
+        f.write(str(time.time()))</pre></article>
+<article class="codecard"><header><a data-ref="src/jarvis/papers.py:SOURCES" href="https://github.com/jaded0/jarvis-research-ideation/blob/main/src/jarvis/papers.py">papers.py · SOURCES / <span data-ref="src/jarvis/papers.py:SEARCH_TTL_DAYS">SEARCH_TTL_DAYS</span></a><p>Source registry and identical-search TTL.</p></header><pre data-snippet-for="src/jarvis/papers.py:SOURCES">SOURCES = {"s2": search_s2, "openalex": search_openalex, "arxiv": search_arxiv}
+
+
+SEARCH_TTL_DAYS = 7</pre></article>
+<article class="codecard"><header><a data-ref="src/jarvis/papers.py:search" href="https://github.com/jaded0/jarvis-research-ideation/blob/main/src/jarvis/papers.py">papers.py · search (continued)</a><p>Record IDs for later cache hits, then commit the paper/search writes.</p></header><pre data-snippet-for="src/jarvis/papers.py:search">    conn.execute("INSERT OR REPLACE INTO searches (query, source, lim, paper_ids, ts) "
+                 "VALUES (?, ?, ?, ?, datetime('now'))", (*key, json.dumps([p["id"] for p in results])))
+    conn.commit()
+    return results</pre></article>
+</div>
+<div class="codepage" data-page="dedup" hidden>
+<article class="codecard"><header><a data-ref="src/jarvis/ideas.py:sample" href="https://github.com/jaded0/jarvis-research-ideation/blob/main/src/jarvis/ideas.py">ideas.py · sample</a><p>Random titles + summaries, not an automatic similarity score.</p></header><pre data-snippet-for="src/jarvis/ideas.py:sample">    pool = [dict(r) for r in conn.execute(
+        "SELECT id, title, summary FROM ideas WHERE project_id = ?", (project_id,))]
+    picked = random.Random(seed).sample(pool, min(n, len(pool)))
+    out, used = [], 0
+    for idea in picked:
+        size = len(idea["title"]) + len(idea["summary"])
+        if out and used + size &gt; max_chars:
+            break</pre></article>
+<article class="codecard"><header><a data-ref="src/jarvis/ideas.py:fts_query" href="https://github.com/jaded0/jarvis-research-ideation/blob/main/src/jarvis/ideas.py">ideas.py · fts_query</a><p>Plain keywords: quote each word; any word may match.</p></header><pre data-snippet-for="src/jarvis/ideas.py:fts_query">def fts_query(query: str) -&gt; str:
+    """Plain keywords -&gt; an FTS5 query: each word quoted (so '-', ':', quotes, AND etc. are literal), any may match."""
+    return " OR ".join('"' + w.replace('"', '""') + '"' for w in query.split())</pre></article>
+<article class="codecard"><header><a data-ref="src/jarvis/ideas.py:search" href="https://github.com/jaded0/jarvis-research-ideation/blob/main/src/jarvis/ideas.py">ideas.py · search</a><p>Keyword recall is a separate command, scoped to the project.</p></header><pre data-snippet-for="src/jarvis/ideas.py:search">    if not query.split():
+        return []
+    return [dict(r) for r in conn.execute(
+        "SELECT i.id, i.title, i.summary, i.status FROM ideas_fts f JOIN ideas i ON i.id = f.rowid "
+        "WHERE ideas_fts MATCH ? AND i.project_id = ? ORDER BY rank LIMIT ?",
+        (fts_query(query), project_id, limit))]</pre></article>
+<article class="codecard"><header><a data-ref="src/jarvis/ideas.py:add" href="https://github.com/jaded0/jarvis-research-ideation/blob/main/src/jarvis/ideas.py">ideas.py · add</a><p>After the agent logs a unique verdict, store the candidate and evidence.</p></header><pre data-snippet-for="src/jarvis/ideas.py:add">    idea_id = cur.lastrowid
+    for paper_id, why in papers:
+        link_paper(conn, idea_id, paper_id, why)
+    conn.commit()
+    log_event(conn, "idea_added", project_id, idea_id=idea_id)
+    return idea_id</pre></article>
+</div>
+<div class="codepage" data-page="decide" hidden>
+<article class="codecard"><header><a data-ref="src/jarvis/ideas.py:set_status" href="https://github.com/jaded0/jarvis-research-ideation/blob/main/src/jarvis/ideas.py">ideas.py · set_status</a><p>Approve / reject; for elaboration, set status to elaborating first.</p></header><pre data-snippet-for="src/jarvis/ideas.py:set_status">    conn.execute("UPDATE ideas SET status = ?, updated_at = ? WHERE id = ?", (status, now(), idea_id))
+    conn.commit()
+    log_event(conn, "idea_status", row["project_id"], idea_id=idea_id, old=row["status"], new=status)</pre></article>
+<article class="codecard"><header><a data-ref="src/jarvis/ideas.py:edit" href="https://github.com/jaded0/jarvis-research-ideation/blob/main/src/jarvis/ideas.py">ideas.py · edit</a><p>ideas edit ID --append adds the first test, signal and risk to the body.</p></header><pre data-snippet-for="src/jarvis/ideas.py:edit">    fields = {"title": title, "summary": summary, "body": body}
+    fields = {k: v for k, v in fields.items() if v is not None}
+    if append:
+        base = fields.get("body", row["body"])
+        fields["body"] = f"{base}\n\n{append}" if base else append</pre></article>
+<article class="codecard"><header><a data-ref="src/jarvis/ideas.py:link_paper" href="https://github.com/jaded0/jarvis-research-ideation/blob/main/src/jarvis/ideas.py">ideas.py · link_paper</a><p>Ground: search more papers, then link cached evidence with a reason.</p></header><pre data-snippet-for="src/jarvis/ideas.py:link_paper">    if conn.execute("SELECT 1 FROM papers WHERE id = ?", (paper_id,)).fetchone() is None:
+        raise LookupError(f"paper {paper_id!r} is not cached; find it with `jarvis papers search` first")
+    conn.execute(
+        "INSERT OR REPLACE INTO idea_papers (idea_id, paper_id, why) VALUES (?, ?, ?)",
+        (idea_id, paper_id, why),
+    )</pre></article>
+</div>
+<div class="codepage" data-page="storage" hidden>
+<article class="codecard"><header><a data-ref="src/jarvis/db.py:SCHEMA" href="https://github.com/jaded0/jarvis-research-ideation/blob/main/src/jarvis/db.py">db.py · SCHEMA / idea_papers</a><p>Many-to-many evidence links with a “why this paper” explanation.</p></header><pre data-snippet-for="src/jarvis/db.py:SCHEMA">CREATE TABLE IF NOT EXISTS idea_papers (
+    idea_id  INTEGER NOT NULL REFERENCES ideas(id),
+    paper_id TEXT NOT NULL REFERENCES papers(id),
+    why      TEXT NOT NULL DEFAULT '',
+    PRIMARY KEY (idea_id, paper_id)
+);</pre></article>
+<article class="codecard"><header><a data-ref="src/jarvis/db.py:SCHEMA" href="https://github.com/jaded0/jarvis-research-ideation/blob/main/src/jarvis/db.py">db.py · SCHEMA / ideas_fts</a><p>External-content FTS5 index; insert, delete and update triggers sync it.</p></header><pre data-snippet-for="src/jarvis/db.py:SCHEMA">CREATE VIRTUAL TABLE IF NOT EXISTS ideas_fts USING fts5(
+    title, summary, body, content='ideas', content_rowid='id'
+);
+CREATE TRIGGER IF NOT EXISTS ideas_ai AFTER INSERT ON ideas BEGIN
+    INSERT INTO ideas_fts(rowid, title, summary, body) VALUES (new.id, new.title, new.summary, new.body);
+END;</pre></article>
+<article class="codecard"><header><a data-ref="src/jarvis/db.py:SCHEMA" href="https://github.com/jaded0/jarvis-research-ideation/blob/main/src/jarvis/db.py">db.py · SCHEMA / notes</a><p>Notes always belong to a project; linking to an idea is optional.</p></header><pre data-snippet-for="src/jarvis/db.py:SCHEMA">CREATE TABLE IF NOT EXISTS notes (
+    id         INTEGER PRIMARY KEY,
+    project_id INTEGER NOT NULL REFERENCES projects(id),
+    idea_id    INTEGER REFERENCES ideas(id),
+    body       TEXT NOT NULL,
+    created_at TEXT NOT NULL
+);</pre></article>
+</div>
+<div class="codepage" data-page="evaluation" hidden>
+<article class="codecard"><header><a data-ref="src/jarvis/cli.py:cmd_event" href="https://github.com/jaded0/jarvis-research-ideation/blob/main/src/jarvis/cli.py">cli.py · cmd_event</a><p>Agent-reported dedup verdicts and ask_user events enter here.</p></header><pre data-snippet-for="src/jarvis/cli.py:cmd_event">def cmd_event(conn, args):
+    pid = db.project_id(conn, args.project) if args.project else None
+    db.log_event(conn, args.kind, pid, **json.loads(args.data))
+    emit(args, {"kind": args.kind}, f"Logged {args.kind}.")</pre></article>
+<article class="codecard"><header><a data-ref="src/jarvis/db.py:log_event" href="https://github.com/jaded0/jarvis-research-ideation/blob/main/src/jarvis/db.py">db.py · log_event</a><p>Append a timestamp, kind, optional project and JSON payload.</p></header><pre data-snippet-for="src/jarvis/db.py:log_event">    conn.execute(
+        "INSERT INTO events (ts, kind, project_id, payload) VALUES (?, ?, ?, ?)",
+        (now(), kind, project_id, json.dumps(payload)),
+    )
+    conn.commit()</pre></article>
+<article class="codecard"><header><a data-ref="src/jarvis/cli.py:cmd_stats" href="https://github.com/jaded0/jarvis-research-ideation/blob/main/src/jarvis/cli.py">cli.py · cmd_stats / rates</a><p>Approval ↑ uses current statuses; duplicates ↓ use dedup event verdicts.</p></header><pre data-snippet-for="src/jarvis/cli.py:cmd_stats">        # value: share of ideas the user approved
+        "approved_rate": counts.get("approved", 0) / total if total else None,
+        # variety: share of dedup checks that flagged a duplicate
+        "duplicate_rate": verdicts.count("duplicate") / len(verdicts) if verdicts else None,
+        # persistence: how often the agent had to prompt the user
+        "user_prompts": events.get("ask_user", 0),</pre></article>
+<article class="codecard"><header><a data-ref="src/jarvis/cli.py:cmd_stats" href="https://github.com/jaded0/jarvis-research-ideation/blob/main/src/jarvis/cli.py">cli.py · cmd_stats / event inputs</a><p>Only the selected project's events contribute to these metrics.</p></header><pre data-snippet-for="src/jarvis/cli.py:cmd_stats">    events = dict(conn.execute(
+        "SELECT kind, COUNT(*) FROM events WHERE project_id = ? GROUP BY kind", (pid,)).fetchall())
+    verdicts = [json.loads(r[0]).get("verdict") for r in conn.execute(
+        "SELECT payload FROM events WHERE project_id = ? AND kind = 'dedup'", (pid,))]</pre></article>
+</div>
+</section>
+</main>
+<footer><div class="legend" aria-label="Component colour legend"><span class="human">Researcher</span><span class="agent">Agent / instructions</span><span class="cli">CLI / execution</span><span class="data">Stored state</span><span class="paper">Literature</span></div><span class="screen-only">1–4 levels · + / − zoom · Alt + wheel / pinch · click a node to expand</span><span>Read source, not a future roadmap.</span></footer>
+</div>
+<script>
+(() => {
+  const $ = s => document.querySelector(s), $$ = s => [...document.querySelectorAll(s)];
+  const params = new URLSearchParams(location.search);
+  const names = ['Story', 'System', 'Flow', 'Code'];
+  const captions = ['A thinking partner: remember → look up → suggest → you choose.', 'The notebook becomes SQLite; the library becomes APIs; Jarvis becomes pi + a CLI.', 'Instructions become a session loop; commands move data through one SQLite file.', 'Each workflow step resolves to named functions and tested, verbatim source excerpts.'];
+  const summaries = {
+    launch: 'Start the session → configure pi → hand over the process. Behaviour comes from persona.md and skill/SKILL.md.',
+    dispatch: 'bash runs jarvis → main → build_parser / sub → args.fn(conn, args). No long-lived CLI server.',
+    recall: 'Recall → understand → write a summary note. The agent decides what to read and what the summary says.',
+    research: 'Research → searches cache → source API on a miss → papers cache. Use --refresh to bypass the search cache.',
+    dedup: 'For every candidate: fresh sample → agent judgment → event dedup → add only if unique. Sampling can miss repeats.',
+    decide: 'Choose → status change, append elaboration, or retrieve and link more evidence → repeat research / propose.',
+    storage: 'projects → ideas / notes / events; ideas ↔ FTS; ideas → idea_papers ← papers; searches stores paper IDs as JSON.',
+    evaluation: 'events → stats: higher approval rate; lower duplicate rate and ask_user count. These are proxies, not ground truth.'
+  };
+  let level = 1, topic = 'launch', focus = '', wheelAt = 0;
+  if (params.has('topic') && summaries[params.get('topic')]) topic = params.get('topic');
+  const shot = params.get('shot') === '1';
+  document.body.classList.toggle('shot', shot);
+  function show(n, nextTopic, nextFocus) {
+    level = Math.max(1, Math.min(4, Number(n) || 1));
+    if (nextTopic && summaries[nextTopic]) topic = nextTopic;
+    focus = nextFocus || '';
+    $$('.level').forEach((el, i) => el.hidden = i !== level - 1);
+    $$('[data-level]').forEach(el => el.setAttribute('aria-pressed', String(+el.dataset.level === level)));
+    $$('.codepage').forEach(el => el.hidden = el.dataset.page !== topic);
+    $$('.code-nav button').forEach(el => el.setAttribute('aria-pressed', String(el.dataset.topic === topic)));
+    $$('[data-focus-id]').forEach(el => el.classList.toggle('focused', el.dataset.focusId === focus));
+    $('#zoom').value = level;
+    $('#out').disabled = level === 1;
+    $('#caption').textContent = captions[level - 1];
+    $('#breadcrumb').textContent = 'Overview / ' + names.slice(0, level).join(' / ') + (level === 4 ? ' / ' + topic : focus ? ' / ' + focus : '');
+    $('#code-summary').textContent = summaries[topic];
+    const url = new URL(location.href);
+    url.searchParams.set('level', level);
+    if (level === 4) url.searchParams.set('topic', topic); else url.searchParams.delete('topic');
+    try { history.replaceState(null, '', url); } catch (_) { /* file:// may restrict history */ }
+  }
+  document.addEventListener('click', e => {
+    const b = e.target.closest('button'); if (!b) return;
+    if (b.dataset.level) show(b.dataset.level);
+    else if (b.dataset.go) show(b.dataset.go, b.dataset.topic, b.dataset.focus);
+    else if (b.dataset.topic) show(4, b.dataset.topic);
+  });
+  $('#zoom').addEventListener('input', e => show(e.target.value));
+  $('#out').addEventListener('click', () => show(level - 1));
+  $('#screenshot').addEventListener('click', () => document.body.classList.add('shot'));
+  $('#print').addEventListener('click', () => window.print());
+  document.addEventListener('keydown', e => {
+    if ((e.target instanceof Element && e.target.matches('input,textarea,select')) || e.ctrlKey || e.metaKey || e.altKey) return;
+    if (/^[1-4]$/.test(e.key)) { e.preventDefault(); show(e.key); }
+    if (e.key === '+' || e.key === '=') { e.preventDefault(); show(level + 1); }
+    if (e.key === '-' || e.key === '−') { e.preventDefault(); show(level - 1); }
+    if (e.key === 'Escape') document.body.classList.remove('shot');
+  });
+  $('#canvas').addEventListener('wheel', e => {
+    // Ordinary scrolling stays ordinary; Alt+wheel or trackpad pinch changes semantics.
+    if (!(e.altKey || e.ctrlKey) || Math.abs(e.deltaY) < 2) return;
+    e.preventDefault();
+    if (Date.now() - wheelAt > 350) { wheelAt = Date.now(); show(level + (e.deltaY < 0 ? 1 : -1)); }
+  }, {passive:false});
+  show(params.get('level') || 1);
+})();
+</script>
+</body>
+</html>

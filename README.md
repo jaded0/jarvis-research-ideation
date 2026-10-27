@@ -25,7 +25,27 @@ To talk to J.A.R.V.I.S., `cd` into *your research project* and run `jarvis chat`
 - read-only tools plus bash, so it can't edit your files
 - Haiku 5.5 through OpenRouter, with Ctrl+P switching to Luna. Override with `JARVIS_MODELS=provider/model,...`, and pass extra pi flags after `--`.
 
-The database (`jarvis.db`) and the project name default to the current directory. Working on this repo with pi or another coding agent is unaffected; the skill is also linked at `.agents/skills/jarvis` for testing.
+The database defaults to `./jarvis.db` (override with `$JARVIS_DB` or `--db`). Only `jarvis chat` defaults the project name to the current directory's name; other project-scoped commands need `$JARVIS_PROJECT` or `-p NAME`. Working on this repo with pi or another coding agent is unaffected; the skill is also linked at `.agents/skills/jarvis` for testing.
+
+## How it works
+
+You tell Jarvis what you're working on and where you're stuck. It remembers earlier ideas and notes, looks up what scientists have written, and suggests a few new things to try. It checks a sample of earlier ideas to avoid repeats; it can still miss duplicates. You pick which ideas you like.
+
+```mermaid
+flowchart LR
+    R[Researcher] <--> C[jarvis chat → pi agent]
+    C -->|bash: a new process per command| CLI[jarvis CLI]
+    CLI <--> DB[(jarvis.db)]
+    CLI --> S[OpenAlex default / arXiv / Semantic Scholar]
+```
+
+The [zoomable diagram](docs/how-it-works.html) goes from this story to workflows and linked source excerpts. Open it locally in a browser; once GitHub Pages is enabled for `docs/`, it will be at https://jaded0.github.io/jarvis-research-ideation/how-it-works.html.
+
+Where to change things:
+- New command: a `cmd_*` handler in `src/jarvis/cli.py`, register it in `build_parser`, then update `src/jarvis/skill/SKILL.md`.
+- New paper source: `search_x` + `parse_x` in `src/jarvis/papers.py`, registered in `SOURCES`.
+- Agent behaviour: `src/jarvis/persona.md`.
+- CLI reference and protocols (dedup, evaluation, API etiquette): `src/jarvis/skill/SKILL.md`.
 
 ## Slides
 
