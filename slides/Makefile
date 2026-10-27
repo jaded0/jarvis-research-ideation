@@ -11,7 +11,11 @@ slides.pdf: slides.md $(wildcard img/*)
 watch:
 	$(MARP) -s .
 
+# Rebuild slides.pdf on every save; keep it open in a viewer that reloads (VS Code's PDF tab, evince, zathura).
+watch-pdf:
+	$(MARP) slides.md --pdf -o slides.pdf --watch --no-stdin
+
 clean:
 	rm -f slides.pdf
 
-.PHONY: watch clean
+.PHONY: watch watch-pdf clean
